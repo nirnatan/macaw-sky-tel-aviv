@@ -115,6 +115,7 @@ export function feather(o: FeatherOptions): THREE.BufferGeometry {
   const n = o.segments ?? 7;
   const m = o.across ?? 4;
   const thickness = 0.0006;
+  const tipAt = featherTip(o);
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
@@ -134,9 +135,9 @@ export function feather(o: FeatherOptions): THREE.BufferGeometry {
     for (let i = 0; i <= n; i++) {
       const s = i / n;
       const hw = halfWidth(s);
-      const shaftX = -o.asymmetry * (o.width / 2) * 0.55 * s;
+      const shaftX = tipAt.x * s;
       const z = s * o.length;
-      const sag = -o.droop * o.length * s * s;
+      const sag = tipAt.y * s * s;
       for (let j = 0; j <= m; j++) {
         const u = (j / m) * 2 - 1;
         const x = shaftX + u * hw;
@@ -162,6 +163,23 @@ export function feather(o: FeatherOptions): THREE.BufferGeometry {
     }
   }
   return bufferGeometry(positions, normals, uvs, colors, indices);
+}
+
+/** Where the shaft of a feather built by `feather` ends, in the feather's local space. */
+export function featherTip(o: Pick<FeatherOptions, 'length' | 'width' | 'asymmetry' | 'droop'>): THREE.Vector3 {
+  return new THREE.Vector3(-o.asymmetry * (o.width / 2) * 0.55, -o.droop * o.length, o.length);
+}
+
+/** Piecewise-smooth section radii: keys are [t, rx, ry], interpolated with smoothstep between neighbours. */
+export function keyframes(keys: [t: number, rx: number, ry: number][]): (t: number) => SweepSection {
+  return (t) => {
+    let i = 1;
+    while (i < keys.length - 1 && keys[i][0] < t) i++;
+    const [t0, rx0, ry0] = keys[i - 1];
+    const [t1, rx1, ry1] = keys[i];
+    const f = THREE.MathUtils.smoothstep(t, t0, t1);
+    return { rx: THREE.MathUtils.lerp(rx0, rx1, f), ry: THREE.MathUtils.lerp(ry0, ry1, f) };
+  };
 }
 
 /** A UV sphere with per-vertex color from its outward direction. */

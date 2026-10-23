@@ -67,6 +67,7 @@ export const createMacaw: CreateMacaw = (species) => new MacawImpl(species);
 class MacawImpl implements Macaw {
   readonly object: THREE.Group;
   readonly footOffset: number;
+  readonly wingTips: readonly [THREE.Object3D, THREE.Object3D];
   private rig: Rig;
   private rand: () => number;
   private time = 0;
@@ -88,6 +89,7 @@ class MacawImpl implements Macaw {
     const palette = PALETTES[species];
     this.rig = buildRig(palette, createAtlas(palette, species === 'blueGold' ? 7 : 19), this.rand);
     this.object = this.rig.object;
+    this.wingTips = this.rig.wingTips;
     this.weights = Object.fromEntries(MODE_LIST.map((m) => [m, new Spring(m === 'idle' ? 1 : 0, 0.28)])) as Record<MacawMode, Spring>;
     this.modePoses = Object.fromEntries(MODE_LIST.map((m) => [m, emptyPose()])) as Record<MacawMode, Pose>;
 
@@ -139,6 +141,7 @@ class MacawImpl implements Macaw {
     p.tailSpread = Math.min(1, p.tailSpread + 0.3 * Math.abs(bank));
     p.beakOpen += g.squawk;
     this.apply(p, bank, look, g.blink);
+    this.object.updateMatrixWorld(true); // so wingTips (and anything else read off the skeleton) are current now, not after the next render
   }
 
   squawk(): void {
@@ -165,7 +168,7 @@ class MacawImpl implements Macaw {
       const s = wing.side;
       const inner = Math.max(0, s * bank); // the lowered wing on a banked turn tucks a little
       const lift = p.lift - 0.35 * s * bank;
-      wing.shoulder.rotation.set(s * (p.twist + 0.15 * inner), -s * p.sweep, s * lift, 'YZX');
+      wing.shoulder.rotation.set(p.twist + 0.15 * inner, -s * p.sweep, s * lift, 'YZX'); // a twist about X mirrors to itself; only Y and Z flip
       wing.elbow.rotation.y = s * (p.elbow + 0.3 * inner);
       wing.wrist.rotation.set(0, -s * (p.wrist + 0.25 * inner), s * p.wristPitch, 'YZX');
       for (const f of wing.feathers) {

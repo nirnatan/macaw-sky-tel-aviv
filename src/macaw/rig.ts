@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { FeatherColors, Palette } from './palette';
-import { feather, merge, skin, sphere, sweep, type SkinInfluence } from './geometry';
-import { atlas } from './textures';
+import { feather, featherTip, keyframes, merge, skin, sweep, type SkinInfluence } from './geometry';
+import { atlas, type Atlas } from './textures';
+import { JAW_PIVOT, eyeCenters, eyeGeometry, lowerBeakGeometry, skullGeometry, upperBeakGeometry } from './head';
 
 const deg = THREE.MathUtils.DEG2RAD;
 const smooth = THREE.MathUtils.smoothstep;
@@ -46,6 +47,7 @@ export interface Rig {
   tailBase: THREE.Bone;
   tail: TailFeather[];
   wings: Wing[];
+  wingTips: [THREE.Object3D, THREE.Object3D]; // left, right: the shaft end of the longest primary
   legs: Leg[];
   meshes: THREE.SkinnedMesh[];
   dispose(): void;
@@ -53,7 +55,6 @@ export interface Rig {
 
 // Rest-pose landmarks (meters, root space: body center at the origin, facing -Z).
 const HEAD_CENTER = new THREE.Vector3(0, 0.078, -0.2);
-const HEAD_RADIUS = 0.044;
 const NECK_BASE = new THREE.Vector3(0, 0.03, -0.14);
 const SHOULDER = new THREE.Vector3(0.05, 0.036, -0.055);
 const HUMERUS = 0.095;
@@ -64,8 +65,9 @@ const THIGH = 0.05;
 const SHANK = 0.075;
 const TARSUS = 0.042;
 const TAIL_BASE = new THREE.Vector3(0, 0.002, 0.165);
+const PLUMAGE_LIFT = 0.16; // fraction of albedo the plumage re-emits, tuned against the game's dusk ambient
 
-export function buildRig(palette: Palette, map: THREE.Texture, rand: () => number): Rig {
+export function buildRig(palette: Palette, textures: Atlas, rand: () => number): Rig {
   const object = new THREE.Group();
   const bones: THREE.Bone[] = [];
   const index = new Map<THREE.Bone, number>();
@@ -83,15 +85,12 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
   const torso = bone('torso', body, 0, 0, 0);
   const neck = bone('neck', torso, NECK_BASE.x, NECK_BASE.y, NECK_BASE.z);
   const head = bone('head', neck, 0, HEAD_CENTER.y - NECK_BASE.y, HEAD_CENTER.z - NECK_BASE.z);
-  const jaw = bone('jaw', head, 0, -0.014, -0.018);
-  const eyeDir = new THREE.Vector3(0.78, 0.2, -0.5).normalize();
-  const eyes = [1, -1].map((s) => {
-    const d = eyeDir.clone().setX(eyeDir.x * s).multiplyScalar(HEAD_RADIUS * 0.96);
-    return bone(`eye${s > 0 ? 'R' : 'L'}`, head, d.x, d.y, d.z);
-  });
+  const jaw = bone('jaw', head, JAW_PIVOT.x, JAW_PIVOT.y, JAW_PIVOT.z);
+  const eyes = eyeCenters().map((c, i) => bone(i ? 'eyeR' : 'eyeL', head, c.x, c.y, c.z));
   const tailBase = bone('tailBase', torso, TAIL_BASE.x, TAIL_BASE.y, TAIL_BASE.z);
 
   const wings: Wing[] = [];
+  const wingTips: THREE.Object3D[] = [];
   const wingFeatherSpecs: { fb: FeatherBone; opts: FeatherSpec }[] = [];
   for (const side of [1, -1] as const) {
     const sfx = side > 0 ? 'R' : 'L';
@@ -113,7 +112,15 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
           group: row.parent === 'wrist' ? 'hand' : 'arm',
         };
         wing.feathers.push(fb);
-        wingFeatherSpecs.push({ fb, opts: { ...spec, asymmetry: -side * spec.asymmetry } });
+        const opts = { ...spec, asymmetry: -side * spec.asymmetry };
+        wingFeatherSpecs.push({ fb, opts });
+        if (row.name === 'primary' && i === LONGEST_PRIMARY) {
+          const tip = new THREE.Object3D();
+          tip.name = `wingTip${sfx}`;
+          tip.position.copy(featherTip(opts));
+          b.add(tip);
+          wingTips[side > 0 ? 1 : 0] = tip;
+        }
       }
     }
     wings.push(wing);
@@ -187,11 +194,7 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
     },
   ));
 
-  const headGeom = new THREE.SphereGeometry(HEAD_RADIUS, 32, 22);
-  headGeom.scale(0.92, 1, 1.09);
-  remapUv(headGeom, atlas.head);
-  whiteColors(headGeom);
-  plumage.push(skin(headGeom, head.matrixWorld, rigid(head)));
+  plumage.push(skin(skullGeometry(), head.matrixWorld, rigid(head)));
 
   for (const leg of legs) {
     const thigh = new THREE.SphereGeometry(1, 14, 10);
@@ -251,46 +254,25 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
     });
   }
 
-  // Beak, in head space. The upper mandible is a deep hook; the lower is a short blunt scoop on the jaw bone.
-  const upperBeak = sweep({
-    curve: new THREE.CubicBezierCurve3(new THREE.Vector3(0, 0.024, -0.034), new THREE.Vector3(0, 0.032, -0.066), new THREE.Vector3(0, 0.012, -0.082), new THREE.Vector3(0, -0.04, -0.068)),
-    segments: 18, radial: 16,
-    profile: keyframes([[0, 0.019, 0.024], [0.3, 0.016, 0.02], [0.6, 0.0095, 0.012], [0.85, 0.0045, 0.0055], [1, 0.001, 0.001]]),
-    color: (t) => new THREE.Color(palette.upperBeak.base).lerp(new THREE.Color(palette.upperBeak.tip), smooth(t, 0.55, 0.9)),
-  });
-  hard.push(skin(upperBeak, head.matrixWorld, rigid(head)));
-  const lowerBeak = sweep({
-    curve: new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, -0.004, -0.012), new THREE.Vector3(0, -0.009, -0.036), new THREE.Vector3(0, -0.011, -0.05)),
-    segments: 8, radial: 14, capEnd: true,
-    profile: keyframes([[0, 0.018, 0.012], [0.6, 0.016, 0.011], [1, 0.011, 0.008]]),
-    color: () => new THREE.Color(palette.lowerBeak),
-  });
-  hard.push(skin(lowerBeak, jaw.matrixWorld, rigid(jaw)));
-
-  const iris = new THREE.Color(palette.iris);
-  const ring = new THREE.Color('#3a2a1a');
-  const pupil = new THREE.Color('#060606');
-  for (const eye of eyes) {
-    const outward = eye.position.clone().normalize();
-    const g = sphere(0.0092, 28, 18, (d) => {
-      const a = d.angleTo(outward);
-      return a < 0.46 ? pupil : a < 0.52 ? ring : iris;
-    });
-    hard.push(skin(g, eye.matrixWorld, rigid(eye)));
-  }
+  hard.push(skin(upperBeakGeometry(palette), head.matrixWorld, rigid(head)));
+  hard.push(skin(lowerBeakGeometry(palette), jaw.matrixWorld, rigid(jaw)));
+  const wet: THREE.BufferGeometry[] = eyes.map((eye) => skin(eyeGeometry(palette, eye.position), eye.matrixWorld, rigid(eye)));
 
   const legColor = new THREE.Color(palette.legs);
+  const scaleColor = new THREE.Color();
+  const scales = (t: number, a: number, rings: number) => // reticulate scales: light centers, dark creases between rings
+    scaleColor.copy(legColor).multiplyScalar(0.84 + 0.22 * (0.5 + 0.5 * Math.sin(t * rings * Math.PI * 2)) * (0.8 + 0.2 * Math.cos(a * 3)));
   const clawColor = new THREE.Color('#2a2624');
   const Z = new THREE.Vector3(0, 0, 1);
   for (const leg of legs) {
     const s = leg.side;
     hard.push(skin(sweep({
-      curve: new THREE.LineCurve3(new THREE.Vector3(0, 0.01, 0), new THREE.Vector3(0, -SHANK, 0)), segments: 6, radial: 10, up: Z,
-      profile: keyframes([[0, 0.012, 0.012], [0.7, 0.0075, 0.0075], [1, 0.0065, 0.0065]]), color: () => legColor,
+      curve: new THREE.LineCurve3(new THREE.Vector3(0, 0.01, 0), new THREE.Vector3(0, -SHANK, 0)), segments: 16, radial: 10, up: Z,
+      profile: keyframes([[0, 0.012, 0.012], [0.7, 0.0075, 0.0075], [1, 0.0065, 0.0065]]), color: (t, a) => scales(t, a, 5),
     }), leg.knee.matrixWorld, rigid(leg.knee)));
     hard.push(skin(sweep({
-      curve: new THREE.LineCurve3(new THREE.Vector3(0, 0.004, 0), new THREE.Vector3(0, -TARSUS, 0)), segments: 6, radial: 10, up: Z,
-      profile: (t) => ({ rx: 0.0068 * (1 + 0.08 * Math.sin(t * 9)), ry: 0.0068 * (1 + 0.08 * Math.sin(t * 9)) }), color: () => legColor,
+      curve: new THREE.LineCurve3(new THREE.Vector3(0, 0.004, 0), new THREE.Vector3(0, -TARSUS, 0)), segments: 14, radial: 10, up: Z,
+      profile: (t) => ({ rx: 0.0068 * (1 + 0.08 * Math.sin(t * 9)), ry: 0.0068 * (1 + 0.08 * Math.sin(t * 9)) }), color: (t, a) => scales(t, a, 4),
     }), leg.ankle.matrixWorld, rigid(leg.ankle)));
     const toes: [THREE.Bone, number, number][] = [
       [leg.toesFront, -1, 0.044], [leg.toesFront, 1, 0.036], [leg.toesBack, 1, 0.03], [leg.toesBack, -1, 0.022],
@@ -302,9 +284,9 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
       const end = dir.clone().multiplyScalar(length).setY(-0.004);
       const toe = sweep({
         curve: new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(length * 0.5).setY(0.005), end),
-        segments: 6, radial: 8, up: new THREE.Vector3(0, 1, 0),
+        segments: 10, radial: 8, up: new THREE.Vector3(0, 1, 0),
         profile: (t) => { const r = 0.0048 * (1 - 0.3 * t) * (1 + 0.14 * Math.sin(t * Math.PI * 3)); return { rx: r, ry: r * 0.85 }; },
-        color: () => legColor,
+        color: (t, a) => scales(t, a, 3),
       });
       const claw = sweep({
         curve: new THREE.QuadraticBezierCurve3(end.clone(), end.clone().addScaledVector(dir, 0.009).setY(-0.004), end.clone().addScaledVector(dir, 0.013).setY(-0.011)),
@@ -317,12 +299,28 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
 
   const skeleton = new THREE.Skeleton(bones);
   const plumageMaterial = new THREE.MeshPhysicalMaterial({
-    map, vertexColors: true, roughness: 0.75, metalness: 0, sheen: 0.5, sheenRoughness: 0.65, sheenColorMap: map,
+    map: textures.map, normalMap: textures.normalMap, normalScale: new THREE.Vector2(0.6, 0.6), vertexColors: true,
+    roughness: 0.72, metalness: 0, sheen: 0.7, sheenRoughness: 0.5, sheenColorMap: textures.map,
   });
-  const hardMaterial = new THREE.MeshPhysicalMaterial({
-    vertexColors: true, roughness: 0.38, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.25,
+  // Feathers scatter light through their vanes, so shaded plumage never goes black: re-emit a fraction of the albedo.
+  // `emissive` cannot do this because it ignores the vertex colors.
+  plumageMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.plumageLift = { value: PLUMAGE_LIFT };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * plumageLift;')
+      .replace('uniform vec3 emissive;', 'uniform vec3 emissive;\nuniform float plumageLift;');
+  };
+  const keratinMaterial = new THREE.MeshPhysicalMaterial({ // satin: beak, legs and claws
+    vertexColors: true, roughness: 0.55, metalness: 0, clearcoat: 0.2, clearcoatRoughness: 0.5,
   });
-  const meshes = [new THREE.SkinnedMesh(merge(plumage), plumageMaterial), new THREE.SkinnedMesh(merge(hard), hardMaterial)];
+  const wetMaterial = new THREE.MeshPhysicalMaterial({
+    vertexColors: true, roughness: 0.12, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04,
+  });
+  const meshes = [
+    new THREE.SkinnedMesh(merge(plumage), plumageMaterial),
+    new THREE.SkinnedMesh(merge(hard), keratinMaterial),
+    new THREE.SkinnedMesh(merge(wet), wetMaterial),
+  ];
   for (const m of meshes) {
     m.castShadow = true;
     m.receiveShadow = true;
@@ -332,13 +330,14 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
   }
 
   return {
-    object, body, torso, neck, head, headRest: head.position.clone(), jaw, eyes, tailBase, tail, wings, legs, meshes,
+    object, body, torso, neck, head, headRest: head.position.clone(), jaw, eyes, tailBase, tail, wings,
+    wingTips: [wingTips[0], wingTips[1]], legs, meshes,
     dispose() {
       for (const m of meshes) {
         m.geometry.dispose();
         (m.material as THREE.Material).dispose();
       }
-      map.dispose();
+      textures.dispose();
     },
   };
 }
@@ -369,6 +368,7 @@ interface FeatherRow {
 }
 
 const PRIMARY_LENGTHS = [0.17, 0.19, 0.21, 0.225, 0.235, 0.24, 0.24, 0.232, 0.222, 0.208];
+const LONGEST_PRIMARY = PRIMARY_LENGTHS.indexOf(Math.max(...PRIMARY_LENGTHS));
 
 /** Feather rows per wing, innermost feather first. Angles: 90 = along the bone (outward), 0 = straight back. */
 function wingRows(p: Palette): FeatherRow[] {
@@ -419,16 +419,6 @@ function featherGeometry(o: FeatherSpec, rand: () => number): THREE.BufferGeomet
   });
 }
 
-function keyframes(keys: [t: number, rx: number, ry: number][]): (t: number) => { rx: number; ry: number } {
-  return (t) => {
-    let i = 1;
-    while (i < keys.length - 1 && keys[i][0] < t) i++;
-    const [t0, rx0, ry0] = keys[i - 1];
-    const [t1, rx1, ry1] = keys[i];
-    const f = smooth(t, t0, t1);
-    return { rx: THREE.MathUtils.lerp(rx0, rx1, f), ry: THREE.MathUtils.lerp(ry0, ry1, f) };
-  };
-}
 
 function remapUv(g: THREE.BufferGeometry, fn: (u: number, v: number) => [number, number]): void {
   const uv = g.attributes.uv;
