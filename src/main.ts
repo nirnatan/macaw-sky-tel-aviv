@@ -156,7 +156,7 @@ async function boot() {
     }
     const near = landmarks.spots.find((s) => !found.has(s.id) && player.position.distanceTo(s.position) < 160);
     if (near) return 'nearTarget';
-    if (playTime < 12) return 'steer';
+    if (playTime < 12) return 'flap';
     if (player.altitude < 8 && player.speed > 12) return 'landHere';
     if (playTime < 40) return 'boost';
     return null;
@@ -257,7 +257,6 @@ async function boot() {
   await audio.unlock();
   applySettings();
   ui.showHud(true);
-  input.setTouchControlsVisible(navigator.maxTouchPoints > 0);
   phase = 'playing';
   chase.snap(player, world);
 }
