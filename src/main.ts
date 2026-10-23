@@ -54,6 +54,7 @@ async function boot() {
   ui.setLoading(0.45);
   await nextFrame();
   const city = createCity(data, { scene, quality, sunDirection: env.sunDirection });
+  scene.add(city.group);
   ui.setLoading(0.8, 'מקשטים את הגן ובית הספר… · Decorating the school and the gan…');
   await nextFrame();
   const landmarks = createLandmarks(data, { scene, quality });
@@ -177,12 +178,13 @@ async function boot() {
     };
   }
 
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
   let fpsAccum = 0, fpsFrames = 0, slowSeconds = 0;
 
   function frame() {
     requestAnimationFrame(frame);
-    const dt = Math.min(clock.getDelta(), 1 / 20);
+    timer.update();
+    const dt = Math.min(timer.getDelta(), 1 / 20);
     const inp = input.state;
 
     if (phase === 'menu') {
@@ -245,6 +247,7 @@ async function boot() {
 
   ui.setLoading(1);
   frame();
+  if (import.meta.env.DEV) Object.assign(window, { game: { player, camera, landmarks, world, scene, renderer, city, env, get phase() { return phase; }, get found() { return [...found]; }, get rings() { return ringsCollected; } } });
 
   const choice = await ui.showStart((c) => setSpecies(c.species));
   setSpecies(choice.species);
