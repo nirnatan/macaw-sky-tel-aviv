@@ -121,6 +121,7 @@ export interface AudioEngine {
 
 // ---------- UI (src/ui/) ----------
 export type PlayerName = 'Amit' | 'Or';
+export interface Settings { muted: boolean; music: boolean; quality: Quality | 'auto' }
 export interface StartChoice { player: PlayerName; species: Species }
 export interface TargetHud {
   id: 'school' | 'gan';
@@ -146,7 +147,10 @@ export interface UI {
   /** Big celebration overlay ("Amit found David Yellin school!"). */
   celebrate(target: 'school' | 'gan' | 'all', player: PlayerName): void;
   toast(text: string): void;
-  onPause(cb: () => void): void;
+  /** The UI owns the pause menu (opened by input.pause or a HUD button) and reports changes. */
+  onPause(cb: (paused: boolean) => void): void;
+  readonly settings: Settings; // persisted in localStorage
+  onSettings(cb: (s: Settings) => void): void;
   setLoading(progress: number, label?: string): void; // 0..1; 1 hides the loader
 }
 export type CreateUI = (opts: { root: HTMLElement; data: CityData; input: Input }) => UI;
