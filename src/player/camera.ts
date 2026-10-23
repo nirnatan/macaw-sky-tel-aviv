@@ -44,7 +44,7 @@ export class ChaseCamera {
     }
 
     const speedNorm = THREE.MathUtils.clamp(player.speed / 44, 0, 1);
-    const wantDist = flying ? 2.7 + speedNorm * 2.4 : 1.9;
+    const wantDist = flying ? 2.7 + speedNorm * 2.4 : 1.5;
     this.dist = snap ? wantDist : damp(this.dist, wantDist, 2, dt);
 
     const yaw = player.yaw + this.orbitYaw;
