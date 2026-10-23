@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "n8ao": "^2.0.1",

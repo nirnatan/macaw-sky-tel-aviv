@@ -5,8 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#f3a75a" />
     <title>Macaw Sky · Tel Aviv</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #2a1a12; touch-action: none; overscroll-behavior: none; }
+      #app { position: fixed; inset: 0; }
+      .game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      #boot-loader { position: fixed; inset: 0; display: grid; place-items: center; color: #ffe3b0; font: 600 22px system-ui, sans-serif;
+        background: radial-gradient(circle at 50% 70%, #f7a04b 0%, #b24a2a 45%, #2a1a12 100%); text-align: center; }
+    </style>
   </head>
   <body>
+    <div id="boot-loader">🦜 טוען… · Loading…</div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
