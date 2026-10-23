@@ -85,3 +85,16 @@ test('heading is 0 facing north and +90deg facing east', () => {
   assert.ok(f.x > 0.99, 'east');
   assert.ok(Math.abs(p.heading - Math.PI / 2) < 1e-9);
 });
+
+test('a guided landing near a special place homes in and lands on it', () => {
+  const p = new Player(FOOT);
+  p.placeOnGround(200, 300, 0, world);
+  run(p, 1.5, { flap: true });
+  p.landingAssist = new THREE.Vector3(230, 0, 240); // off to the side and ahead
+  run(p, 1 / 60, { landToggle: true });
+  let landed = false;
+  for (let i = 0; i < 60 * 20 && !landed; i++) landed = !!p.update(1 / 60, idle(), world).events.landed;
+  assert.ok(landed, 'landed');
+  const miss = Math.hypot(p.position.x - 230, p.position.z - 240);
+  assert.ok(miss < 6, `landed ${miss.toFixed(1)} m from the spot`);
+});

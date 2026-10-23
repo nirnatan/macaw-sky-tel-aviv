@@ -198,6 +198,8 @@ async function boot() {
     } else if (phase === 'playing') {
       playTime += dt;
       prevPos.copy(player.position);
+      player.landingAssist = landmarks.spots.find((s) => !found.has(s.id)
+        && Math.hypot(s.position.x - player.position.x, s.position.z - player.position.z) < 90)?.position ?? null;
       const { anim, events } = player.update(dt, inp, world);
       macaw.object.position.copy(player.position);
       macaw.object.quaternion.copy(player.quaternion);
