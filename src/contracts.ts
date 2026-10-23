@@ -67,6 +67,8 @@ export interface Macaw {
   readonly object: THREE.Group;
   /** Distance from origin down to the feet when standing (place origin at surface + footOffset). */
   readonly footOffset: number;
+  /** Left and right anchors at the outer tip of the longest primary feather; world transforms are current after update(). */
+  readonly wingTips: readonly [THREE.Object3D, THREE.Object3D];
   update(dt: number, input: MacawAnimInput): void;
   /** One-shot gestures. */
   squawk(): void; // beak opens, head bobs
@@ -172,3 +174,16 @@ export interface Landmarks {
   update(dt: number, camera: THREE.Camera, bird: THREE.Vector3): void;
 }
 export type CreateLandmarks = (data: CityData, opts: { scene: THREE.Scene; quality: Quality }) => Landmarks;
+
+// ---------- Turbo flames: golden fire streaming from the wing tips while boosting (src/fx/) ----------
+export interface TurboFlames {
+  /** Add to the scene once; particles live in world space so they trail behind the bird. */
+  readonly object: THREE.Object3D;
+  /**
+   * amount: 0..1 boost strength (0 = no new flames; existing ones burn out).
+   * tips: wing tip world positions this frame. velocity: the bird's world velocity in m/s.
+   */
+  update(dt: number, amount: number, tips: readonly [THREE.Vector3, THREE.Vector3], velocity: THREE.Vector3, camera: THREE.Camera): void;
+  setQuality(q: Quality): void;
+}
+export type CreateTurboFlames = (opts: { quality: Quality }) => TurboFlames;
