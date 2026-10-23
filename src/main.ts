@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Macaw, PlayerName, Quality, Species, TargetHud, TargetId } from './contracts';
 import { createAudio } from './audio';
 import { createEnvironment } from './env';
+import { createTurboFlames } from './fx/turbo-flames';
 import { createLandmarks } from './game/landmarks';
 import { createInput } from './input';
 import { createMacaw } from './macaw';
@@ -59,6 +60,10 @@ async function boot() {
   await nextFrame();
   const landmarks = createLandmarks(data, { scene, quality });
   const audio = createAudio();
+  const flames = createTurboFlames({ quality });
+  scene.add(flames.object);
+  const wingTips = [new THREE.Vector3(), new THREE.Vector3()] as const;
+  const velocity = new THREE.Vector3();
 
   const world: WorldQuery = {
     surfaceAt(x, z, belowY) {
@@ -119,7 +124,7 @@ async function boot() {
     audio.setMuted(ui.settings.muted);
     audio.setMusic(ui.settings.music);
     const q = ui.settings.quality === 'auto' ? detectQuality() : ui.settings.quality;
-    if (q !== quality) { quality = q; env.setQuality(q); city.setQuality(q); }
+    if (q !== quality) { quality = q; env.setQuality(q); city.setQuality(q); flames.setQuality(q); }
   };
   ui.onSettings(applySettings);
 
@@ -207,6 +212,11 @@ async function boot() {
       macaw.object.position.copy(player.position);
       macaw.object.quaternion.copy(player.quaternion);
       macaw.update(dt, anim);
+      macaw.object.updateMatrixWorld(true);
+      macaw.wingTips[0].getWorldPosition(wingTips[0]);
+      macaw.wingTips[1].getWorldPosition(wingTips[1]);
+      velocity.subVectors(player.position, prevPos).divideScalar(dt || 1 / 60);
+      flames.update(dt, player.flying ? player.boost : 0, wingTips, velocity, camera);
 
       if (events.flap) audio.flap(events.flap);
       if (inp.squawk) { macaw.squawk(); audio.squawk(species); }
@@ -242,7 +252,7 @@ async function boot() {
         slowSeconds = fps < 40 ? slowSeconds + 1 : 0;
         if (slowSeconds >= 4 && quality !== 'low') {
           quality = quality === 'high' ? 'medium' : 'low';
-          env.setQuality(quality); city.setQuality(quality);
+          env.setQuality(quality); city.setQuality(quality); flames.setQuality(quality);
           env.setSize(innerWidth, innerHeight);
           slowSeconds = 0;
         }

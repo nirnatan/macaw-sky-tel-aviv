@@ -7,12 +7,14 @@ export class ChaseCamera {
   private readonly desired = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
   private readonly look = new THREE.Vector3();
+  private readonly tmp = new THREE.Vector3();
   private orbitYaw = 0;
   private orbitPitch = 0;
   private dragging = false;
   private lastDrag = 0;
   private dist = 4;
   private roll = 0;
+  private readonly lastBird = new THREE.Vector3();
 
   readonly camera: THREE.PerspectiveCamera;
   constructor(camera: THREE.PerspectiveCamera, dom: HTMLElement) {
@@ -44,7 +46,7 @@ export class ChaseCamera {
     }
 
     const speedNorm = THREE.MathUtils.clamp(player.speed / 44, 0, 1);
-    const wantDist = flying ? 2.7 + speedNorm * 2.4 : 1.5;
+    const wantDist = flying ? 2.3 + speedNorm * 2.2 : 1.5;
     this.dist = snap ? wantDist : damp(this.dist, wantDist, 2, dt);
 
     const yaw = player.yaw + this.orbitYaw;
@@ -58,6 +60,11 @@ export class ChaseCamera {
     const top = world.surfaceAt(this.desired.x, this.desired.z).height + 0.5; // never inside a building or under the ground
     if (this.desired.y < top) this.desired.y = top;
 
+    if (!snap) { // carry the camera with the bird so smoothing only lags the offset, never the flight speed
+      cam.position.add(this.tmp.subVectors(player.position, this.lastBird));
+      this.look.add(this.tmp);
+    }
+    this.lastBird.copy(player.position);
     const k = snap ? 1 : 1 - Math.exp(-(flying ? 7 : 5) * dt);
     cam.position.lerp(this.desired, k);
 
