@@ -1,0 +1,25 @@
+{
+  "name": "macaw-sky-tel-aviv",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "extract-osm": "python3 scripts/pbf-to-raw.py",
+    "build-data": "node scripts/build-data.mjs",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.5",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "earcut": "^3.2.4",
+    "playwright-core": "^1.64.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}
