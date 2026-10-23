@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="he">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>UI / input / audio harness</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #2a1a3a; }
+      #game { position: fixed; inset: 0; background:
+        radial-gradient(ellipse at 22% 78%, rgba(255, 230, 150, .95), rgba(255, 170, 90, .0) 38%),
+        linear-gradient(180deg, #4f7fc4 0%, #9bb7d6 28%, #ffd9a0 52%, #ff9e6b 70%, #d9627a 100%); }
+      #sea { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(180deg, #e98a6e, #6e5a9a); opacity: .55; }
+      #stand-in { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font: 600 14px system-ui; color: rgba(255, 255, 255, .8); text-align: center; pointer-events: none; }
+      #stand-in b { display: block; width: 120px; height: 120px; margin: 0 auto 8px; border-radius: 50%; background: var(--bird, #2b7de9); box-shadow: 0 0 40px var(--bird, #2b7de9); }
+      #panel { position: fixed; left: 8px; top: 8px; z-index: 1000; font: 12px system-ui; color: #fff; background: rgba(20, 10, 30, .75); border-radius: 10px; padding: 6px 8px; max-width: 280px; }
+      #panel summary { cursor: pointer; font-weight: 700; }
+      #panel button, #panel select { font: inherit; margin: 2px; padding: 3px 6px; }
+      #panel pre { margin: 6px 0 0; font-size: 11px; line-height: 1.25; white-space: pre-wrap; }
+      body.no-panel #panel { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="game"><div id="sea"></div><div id="stand-in"><b></b><span id="stand-in-text"></span></div></div>
+    <details id="panel" open>
+      <summary>dev harness</summary>
+      <div id="buttons"></div>
+      <pre id="readout"></pre>
+    </details>
+    <script type="module" src="./ui.ts"></script>
+  </body>
+</html>
