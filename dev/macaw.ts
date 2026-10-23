@@ -51,6 +51,23 @@ const birds = (['blueGold', 'scarlet'] as Species[]).map((species, i) => {
 
 const input: MacawAnimInput = { mode: 'glide', effort: 0.5, bank: 0, pitch: 0, walkSpeed: 0.3, look: 0 };
 
+// Wing tip markers live in the scene, not the skeleton, so they prove the anchors' world matrices after update().
+const tipMarkers = birds.flatMap((b) => b.wingTips.map(() => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.012, 12, 8), new THREE.MeshBasicMaterial({ color: '#00ff66', depthTest: false }));
+  m.renderOrder = 10;
+  m.visible = false;
+  scene.add(m);
+  return m;
+}));
+const tipsEl = document.getElementById('tips') as HTMLInputElement;
+function showTips(on: boolean): void {
+  tipsEl.checked = on;
+  for (const m of tipMarkers) m.visible = on;
+}
+tipsEl.onchange = () => showTips(tipsEl.checked);
+const birdMeshes = birds[0].object.children.filter((c): c is THREE.Mesh => c instanceof THREE.Mesh);
+const trianglesPerBird = birdMeshes.reduce((n, m) => n + m.geometry.index!.count / 3, 0);
+
 const CAMERAS: Record<string, { pos: THREE.Vector3; target: THREE.Vector3 }> = {
   overview: { pos: new THREE.Vector3(0, 1.4, 3.2), target: new THREE.Vector3(0, 0.55, 0) },
   chase: { pos: new THREE.Vector3(0, 2.2, 4.5), target: new THREE.Vector3(0, 0.6, -0.5) },
@@ -112,9 +129,10 @@ cameraEl.onchange = () => setCamera(cameraEl.value);
 const infoEl = document.getElementById('info')!;
 function step(dt: number): void {
   for (const b of birds) b.update(dt, input);
+  birds.forEach((b, i) => b.wingTips.forEach((tip, k) => tipMarkers[i * 2 + k].position.setFromMatrixPosition(tip.matrixWorld)));
   renderer.render(scene, camera);
   const r = renderer.info.render;
-  infoEl.textContent = `calls ${r.calls}  tris ${r.triangles}\nfootOffset ${birds[0].footOffset.toFixed(3)}`;
+  infoEl.textContent = `frame: calls ${r.calls}  tris ${r.triangles}\nper bird: calls ${birdMeshes.length}  tris ${trianglesPerBird}\nfootOffset ${birds[0].footOffset.toFixed(3)}`;
 }
 
 let last = performance.now();
@@ -145,6 +163,8 @@ Object.assign(window, {
     },
     set(key: keyof Omit<MacawAnimInput, 'mode'>, v: number) { input[key] = v; },
     squawk: () => birds.forEach((b) => b.squawk()),
+    showTips,
+    tips: () => birds.map((b) => b.wingTips.map((t) => t.getWorldPosition(new THREE.Vector3()).toArray().map((v) => +v.toFixed(3)))),
     atlas(i: number) {
       const mesh = birds[i].object.children.find((c): c is THREE.SkinnedMesh => c instanceof THREE.SkinnedMesh)!;
       return ((mesh.material as THREE.MeshPhysicalMaterial).map!.image as HTMLCanvasElement).toDataURL();
@@ -155,7 +175,7 @@ Object.assign(window, {
       Object.assign(input, params, { mode });
       setCamera(cam);
       this.advance(settle);
-      return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, footOffset: birds[0].footOffset };
+      return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, perBird: { calls: birdMeshes.length, triangles: trianglesPerBird }, footOffset: birds[0].footOffset };
     },
   },
 });

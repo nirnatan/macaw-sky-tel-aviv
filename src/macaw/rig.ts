@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { FeatherColors, Palette } from './palette';
-import { feather, merge, skin, sphere, sweep, type SkinInfluence } from './geometry';
+import { feather, featherTip, merge, skin, sphere, sweep, type SkinInfluence } from './geometry';
 import { atlas } from './textures';
 
 const deg = THREE.MathUtils.DEG2RAD;
@@ -46,6 +46,7 @@ export interface Rig {
   tailBase: THREE.Bone;
   tail: TailFeather[];
   wings: Wing[];
+  wingTips: [THREE.Object3D, THREE.Object3D]; // left, right: the shaft end of the longest primary
   legs: Leg[];
   meshes: THREE.SkinnedMesh[];
   dispose(): void;
@@ -92,6 +93,7 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
   const tailBase = bone('tailBase', torso, TAIL_BASE.x, TAIL_BASE.y, TAIL_BASE.z);
 
   const wings: Wing[] = [];
+  const wingTips: THREE.Object3D[] = [];
   const wingFeatherSpecs: { fb: FeatherBone; opts: FeatherSpec }[] = [];
   for (const side of [1, -1] as const) {
     const sfx = side > 0 ? 'R' : 'L';
@@ -113,7 +115,15 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
           group: row.parent === 'wrist' ? 'hand' : 'arm',
         };
         wing.feathers.push(fb);
-        wingFeatherSpecs.push({ fb, opts: { ...spec, asymmetry: -side * spec.asymmetry } });
+        const opts = { ...spec, asymmetry: -side * spec.asymmetry };
+        wingFeatherSpecs.push({ fb, opts });
+        if (row.name === 'primary' && i === LONGEST_PRIMARY) {
+          const tip = new THREE.Object3D();
+          tip.name = `wingTip${sfx}`;
+          tip.position.copy(featherTip(opts));
+          b.add(tip);
+          wingTips[side > 0 ? 1 : 0] = tip;
+        }
       }
     }
     wings.push(wing);
@@ -332,7 +342,8 @@ export function buildRig(palette: Palette, map: THREE.Texture, rand: () => numbe
   }
 
   return {
-    object, body, torso, neck, head, headRest: head.position.clone(), jaw, eyes, tailBase, tail, wings, legs, meshes,
+    object, body, torso, neck, head, headRest: head.position.clone(), jaw, eyes, tailBase, tail, wings,
+    wingTips: [wingTips[0], wingTips[1]], legs, meshes,
     dispose() {
       for (const m of meshes) {
         m.geometry.dispose();
@@ -369,6 +380,7 @@ interface FeatherRow {
 }
 
 const PRIMARY_LENGTHS = [0.17, 0.19, 0.21, 0.225, 0.235, 0.24, 0.24, 0.232, 0.222, 0.208];
+const LONGEST_PRIMARY = PRIMARY_LENGTHS.indexOf(Math.max(...PRIMARY_LENGTHS));
 
 /** Feather rows per wing, innermost feather first. Angles: 90 = along the bone (outward), 0 = straight back. */
 function wingRows(p: Palette): FeatherRow[] {
