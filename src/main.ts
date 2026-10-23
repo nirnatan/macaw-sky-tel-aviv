@@ -89,8 +89,11 @@ async function boot() {
   const player = new Player(macaw.footOffset);
   const firstRing = landmarks.rings[0]?.position;
   const startYaw = firstRing ? Math.atan2(-(firstRing.x - START[0]), -(firstRing.z - START[1])) : -Math.PI / 2;
-  player.placeOnGround(START[0], START[1], startYaw, world);
+  player.placeOnGround(START[0], START[1], Math.PI / 2, world); // on the menu the bird faces the sunset, so its face is sunlit
   const chase = new ChaseCamera(camera, renderer.domElement);
+  const heroLight = new THREE.PointLight(0xffeedd, 3, 7, 2); // short-range fill so the macaw reads against the low sun
+  scene.add(heroLight);
+  const heroOffset = new THREE.Vector3(0.6, 0.8, 0);
 
   addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight);
@@ -192,9 +195,9 @@ async function boot() {
       macaw.object.position.copy(player.position);
       macaw.object.quaternion.copy(player.quaternion);
       macaw.update(dt, { mode: 'idle', effort: 0, bank: 0, pitch: 0, walkSpeed: 0, look: Math.sin(menuTime * 0.7) * 0.6 });
-      const a = player.yaw + Math.PI + Math.sin(menuTime * 0.25) * 0.9; // orbit in front of the bird's face
-      camera.position.set(player.position.x - Math.sin(a) * 2.1, player.position.y + 0.35, player.position.z - Math.cos(a) * 2.1);
-      camera.lookAt(player.position.x, player.position.y + 0.05, player.position.z);
+      const a = player.yaw + 0.5 + Math.sin(menuTime * 0.25) * 0.6; // sway around a three-quarter front view
+      camera.position.set(player.position.x - Math.sin(a) * 1.3, player.position.y + 0.1, player.position.z - Math.cos(a) * 1.3);
+      camera.lookAt(player.position.x, player.position.y + 0.1, player.position.z);
     } else if (phase === 'playing') {
       playTime += dt;
       prevPos.copy(player.position);
@@ -226,6 +229,7 @@ async function boot() {
       audio.update({ speed: player.flying ? player.speed : 0, altitude: player.altitude, distanceToCoast: distanceToCoast(player.position.x, player.position.z), flying: player.flying, effort: inp.flap ? 1 : 0.3 });
       landmarks.update(dt, camera, player.position);
     }
+    heroLight.position.copy(heroOffset).applyQuaternion(camera.quaternion).add(camera.position);
     env.update(dt, player.position);
     city.update(camera);
     env.render(dt);
@@ -259,6 +263,7 @@ async function boot() {
   await audio.unlock();
   applySettings();
   ui.showHud(true);
+  player.placeOnGround(START[0], START[1], startYaw, world);
   phase = 'playing';
   chase.snap(player, world);
 }

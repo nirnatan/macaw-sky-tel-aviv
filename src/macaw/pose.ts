@@ -205,12 +205,12 @@ const modeWalk: ModeFn = (c, p) => {
 
 const modeIdle: ModeFn = (c, p) => {
   foldWing(p, 1);
-  p.bodyPitch = 0.35;
+  p.bodyPitch = 0.75; // perched macaws stand tall, tail angled down behind
   p.breathe = Math.sin(c.t * TAU * 0.45);
-  p.neckPitch = -0.3;
-  p.headPitch = -0.25;
+  p.neckPitch = -0.45;
+  p.headPitch = -0.35;
   p.tailSpread = 0.06;
-  p.tailPitch = 0.05;
+  p.tailPitch = 0.25;
   p.legSplay = 0.1;
   setLegs(p, STANDING_LEGS);
 };

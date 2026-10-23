@@ -44,12 +44,12 @@ export class ChaseCamera {
     }
 
     const speedNorm = THREE.MathUtils.clamp(player.speed / 44, 0, 1);
-    const wantDist = flying ? 4.2 + speedNorm * 3 : 2.7;
+    const wantDist = flying ? 2.7 + speedNorm * 2.4 : 1.9;
     this.dist = snap ? wantDist : damp(this.dist, wantDist, 2, dt);
 
     const yaw = player.yaw + this.orbitYaw;
     const pitchFollow = flying ? player.pitch * 0.45 : 0;
-    const elev = (flying ? 0.22 : 0.3) + this.orbitPitch - pitchFollow;
+    const elev = (flying ? 0.2 : 0.32) + this.orbitPitch - pitchFollow;
     this.desired.set(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev))
       .multiplyScalar(this.dist).add(player.position);
 
@@ -62,8 +62,8 @@ export class ChaseCamera {
     cam.position.lerp(this.desired, k);
 
     player.forward(this.fwd);
-    this.target.copy(player.position).addScaledVector(this.fwd, flying ? 2.5 : 0.8);
-    this.target.y += flying ? 0.35 : 0.25;
+    this.target.copy(player.position).addScaledVector(this.fwd, flying ? 1.8 : 0.6);
+    this.target.y += flying ? 0.3 : 0.2;
     this.look.lerp(this.target, snap ? 1 : 1 - Math.exp(-12 * dt));
     cam.lookAt(this.look);
 
