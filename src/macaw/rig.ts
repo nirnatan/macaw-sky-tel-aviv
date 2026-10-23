@@ -65,6 +65,7 @@ const THIGH = 0.05;
 const SHANK = 0.075;
 const TARSUS = 0.042;
 const TAIL_BASE = new THREE.Vector3(0, 0.002, 0.165);
+const PLUMAGE_LIFT = 0.16; // fraction of albedo the plumage re-emits, tuned against the game's dusk ambient
 
 export function buildRig(palette: Palette, textures: Atlas, rand: () => number): Rig {
   const object = new THREE.Group();
@@ -301,6 +302,14 @@ export function buildRig(palette: Palette, textures: Atlas, rand: () => number):
     map: textures.map, normalMap: textures.normalMap, normalScale: new THREE.Vector2(0.6, 0.6), vertexColors: true,
     roughness: 0.72, metalness: 0, sheen: 0.7, sheenRoughness: 0.5, sheenColorMap: textures.map,
   });
+  // Feathers scatter light through their vanes, so shaded plumage never goes black: re-emit a fraction of the albedo.
+  // `emissive` cannot do this because it ignores the vertex colors.
+  plumageMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.plumageLift = { value: PLUMAGE_LIFT };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * plumageLift;')
+      .replace('uniform vec3 emissive;', 'uniform vec3 emissive;\nuniform float plumageLift;');
+  };
   const keratinMaterial = new THREE.MeshPhysicalMaterial({ // satin: beak, legs and claws
     vertexColors: true, roughness: 0.55, metalness: 0, clearcoat: 0.2, clearcoatRoughness: 0.5,
   });

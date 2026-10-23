@@ -113,9 +113,8 @@ function paintBody(ctx: CanvasRenderingContext2D, hctx: CanvasRenderingContext2D
   }
   ctx.putImageData(img, 0, 0);
 
-  // Contour feathers, tail first so each row shingles over the base of the row behind it. They are drawn hard-edged
-  // on a layer that is then blurred, so the tips read as soft down rather than scales; the relief canvas gets the
-  // same shingles so the normal map agrees.
+  // Contour feathers, tail first so each row shingles over the one behind it, drawn hard-edged on a layer that is
+  // then blurred so the tips read as down rather than scales. The relief canvas gets the same shingles.
   const layer = newCanvas();
   layer.drawImage(ctx.canvas, 0, 0);
   layer.shadowColor = 'rgba(20, 10, 0, 0.12)';
@@ -149,9 +148,9 @@ function paintBody(ctx: CanvasRenderingContext2D, hctx: CanvasRenderingContext2D
   const d = shaded.data;
   for (let y = 0; y < BODY_ROWS; y++) {
     for (let x = 0; x < SIZE; x++) {
-      const fibre = 0.6 * valueNoise(x * 4, y * 0.5, 9, 3, SIZE * 4) + 0.4 * valueNoise(x * 2, y * 0.25, 13, 5, SIZE * 2); // stretched along v
+      const fibre = 0.6 * valueNoise(x * 3, y * 0.4, 12, 3, SIZE * 3) + 0.4 * valueNoise(x * 1.5, y * 0.2, 18, 5, SIZE * 1.5); // stretched along v
       const mottle = 0.6 * valueNoise(x, y, 90, 7) + 0.4 * valueNoise(x, y, 220, 9);
-      const m = 1 + 0.045 * fibre + 0.035 * mottle;
+      const m = 1 + 0.03 * fibre + 0.03 * mottle;
       const i = (y * SIZE + x) * 4;
       d[i] = Math.min(255, d[i] * m);
       d[i + 1] = Math.min(255, d[i + 1] * m);
