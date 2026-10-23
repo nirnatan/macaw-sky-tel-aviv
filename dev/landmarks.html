@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Landmarks harness</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #f3b77a; font: 13px system-ui, sans-serif; }
+      #views { position: fixed; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 4px; max-width: 70vw; }
+      #views button { border: 0; border-radius: 6px; padding: 5px 9px; background: #ffffffcc; cursor: pointer; }
+      #stats { position: fixed; bottom: 8px; left: 8px; background: #0008; color: #fff; padding: 4px 8px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <div id="views"></div>
+    <div id="stats"></div>
+    <script type="module" src="./landmarks.ts"></script>
+  </body>
+</html>
