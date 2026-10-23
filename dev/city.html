@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>City harness · Macaw Sky</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #f3c38a; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+      canvas { display: block; }
+      #hud { position: fixed; top: 8px; left: 8px; padding: 8px 10px; background: rgba(20, 16, 12, 0.6); color: #ffe9c9; white-space: pre; border-radius: 6px; pointer-events: none; }
+      #presets { position: fixed; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
+      #presets button { font: inherit; padding: 4px 8px; background: rgba(20, 16, 12, 0.6); color: #ffe9c9; border: 1px solid rgba(255, 233, 201, 0.3); border-radius: 4px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div id="hud">loading…</div>
+    <div id="presets"></div>
+    <script type="module" src="./city.ts"></script>
+  </body>
+</html>
