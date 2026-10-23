@@ -168,7 +168,7 @@ class MacawImpl implements Macaw {
       const s = wing.side;
       const inner = Math.max(0, s * bank); // the lowered wing on a banked turn tucks a little
       const lift = p.lift - 0.35 * s * bank;
-      wing.shoulder.rotation.set(s * (p.twist + 0.15 * inner), -s * p.sweep, s * lift, 'YZX');
+      wing.shoulder.rotation.set(p.twist + 0.15 * inner, -s * p.sweep, s * lift, 'YZX'); // a twist about X mirrors to itself; only Y and Z flip
       wing.elbow.rotation.y = s * (p.elbow + 0.3 * inner);
       wing.wrist.rotation.set(0, -s * (p.wrist + 0.25 * inner), s * p.wristPitch, 'YZX');
       for (const f of wing.feathers) {
