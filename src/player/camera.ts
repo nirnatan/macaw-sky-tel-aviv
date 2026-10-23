@@ -53,10 +53,10 @@ export class ChaseCamera {
     this.desired.set(Math.sin(yaw) * Math.cos(elev), Math.sin(elev), Math.cos(yaw) * Math.cos(elev))
       .multiplyScalar(this.dist).add(player.position);
 
-    const floor = world.surfaceAt(this.desired.x, this.desired.z, this.desired.y + 1).height + 0.5;
-    if (this.desired.y < floor) this.desired.y = floor;
     const pushed = world.collide(this.desired, 0.35);
     if (pushed) this.desired.copy(pushed);
+    const top = world.surfaceAt(this.desired.x, this.desired.z).height + 0.5; // never inside a building or under the ground
+    if (this.desired.y < top) this.desired.y = top;
 
     const k = snap ? 1 : 1 - Math.exp(-(flying ? 7 : 5) * dt);
     cam.position.lerp(this.desired, k);

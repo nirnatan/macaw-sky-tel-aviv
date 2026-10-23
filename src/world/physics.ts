@@ -136,7 +136,7 @@ export class CityPhysics {
       this.tick++;
       this.footIndex.eachAround(x, z, radius, this.stamp, this.tick, (id) => {
         const f = this.footprints[id];
-        if (y - radius >= f.height || y + radius <= f.minHeight) return;
+        if (y >= f.height || y + radius <= f.minHeight) return; // a center above the roof is standing on it, which surfaceAt handles
         const b = this.footBounds[id];
         if (x + radius < b[0] || x - radius > b[2] || z + radius < b[1] || z - radius > b[3]) return;
         const inside = pointInPolygon(x, z, f.rings);
