@@ -74,6 +74,7 @@ function polygonsOf(el) {
 
 const centroid = (r) => { let x = 0, z = 0; for (let i = 0; i < r.length; i += 2) { x += r[i]; z += r[i + 1]; } return [(2 * x) / r.length, (2 * z) / r.length]; };
 for (const t of Object.values(TARGETS)) [t.x, t.z] = project(t.lat, t.lon);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
 const hash = (n) => { let x = n | 0; x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); return ((x ^ (x >>> 16)) >>> 0) / 4294967296; };
 
@@ -131,7 +132,7 @@ async function buildBuildings() {
       for (let i = 1; i < rings.length; i++) rings[i] = orient(rings[i], false);
       const footprint = area2(rings[0]) / 2;
       if (footprint < 12) continue;
-      const height = Math.min(400, heightOf(tags, el.id, footprint));
+      const height = clamp(heightOf(tags, el.id, footprint), 2.5, 400);
       const minHeight = num(tags.min_height) ?? (num(tags['building:min_level']) ?? 0) * 3.3;
       const [cx, cz] = centroid(rings[0]);
       if (Object.values(TARGETS).some((t) => t.clearRadius && Math.hypot(cx - t.x, cz - t.z) < t.clearRadius)) continue;
