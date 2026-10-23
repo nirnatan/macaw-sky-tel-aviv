@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Macaw dev harness</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #f3a75a; font: 12px/1.4 system-ui, sans-serif; }
+      canvas { display: block; }
+      #panel { position: fixed; top: 8px; left: 8px; width: 210px; padding: 10px; background: rgba(20, 16, 12, 0.72); color: #f7e9d6; border-radius: 8px; }
+      #panel button { margin: 2px 2px 2px 0; padding: 3px 8px; border: 1px solid #a88; border-radius: 4px; background: #3a2a22; color: #fbe; cursor: pointer; }
+      #panel button.on { background: #e6a23c; color: #241a10; border-color: #ffd58a; }
+      #panel label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 4px; }
+      #panel input[type=range] { width: 110px; }
+      #panel select { width: 100%; margin-top: 4px; }
+      #info { margin-top: 8px; white-space: pre; font-family: ui-monospace, monospace; opacity: 0.85; }
+    </style>
+  </head>
+  <body>
+    <div id="panel">
+      <div id="modes"></div>
+      <div id="sliders"></div>
+      <button id="squawk">squawk</button>
+      <select id="camera"></select>
+      <div id="info"></div>
+    </div>
+    <script type="module" src="./macaw.ts"></script>
+  </body>
+</html>
