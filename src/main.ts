@@ -33,11 +33,9 @@ async function boot() {
   const root = document.getElementById('app')!;
   const bootLoader = document.getElementById('boot-loader');
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = true; // env owns shadow type and pixel ratio per quality tier
   renderer.domElement.className = 'game-canvas';
   root.appendChild(renderer.domElement);
 
@@ -49,7 +47,6 @@ async function boot() {
   await nextFrame();
 
   let quality: Quality = ui.settings.quality === 'auto' ? detectQuality() : ui.settings.quality;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, quality === 'high' ? 2 : quality === 'medium' ? 1.5 : 1));
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 30000);
@@ -237,7 +234,6 @@ async function boot() {
         if (slowSeconds >= 4 && quality !== 'low') {
           quality = quality === 'high' ? 'medium' : 'low';
           env.setQuality(quality); city.setQuality(quality);
-          renderer.setPixelRatio(Math.min(devicePixelRatio, quality === 'medium' ? 1.5 : 1));
           env.setSize(innerWidth, innerHeight);
           slowSeconds = 0;
         }
