@@ -170,6 +170,18 @@ export function featherTip(o: Pick<FeatherOptions, 'length' | 'width' | 'asymmet
   return new THREE.Vector3(-o.asymmetry * (o.width / 2) * 0.55, -o.droop * o.length, o.length);
 }
 
+/** Piecewise-smooth section radii: keys are [t, rx, ry], interpolated with smoothstep between neighbours. */
+export function keyframes(keys: [t: number, rx: number, ry: number][]): (t: number) => SweepSection {
+  return (t) => {
+    let i = 1;
+    while (i < keys.length - 1 && keys[i][0] < t) i++;
+    const [t0, rx0, ry0] = keys[i - 1];
+    const [t1, rx1, ry1] = keys[i];
+    const f = THREE.MathUtils.smoothstep(t, t0, t1);
+    return { rx: THREE.MathUtils.lerp(rx0, rx1, f), ry: THREE.MathUtils.lerp(ry0, ry1, f) };
+  };
+}
+
 /** A UV sphere with per-vertex color from its outward direction. */
 export function sphere(radius: number, widthSegments: number, heightSegments: number, color: (dir: THREE.Vector3) => THREE.Color): THREE.BufferGeometry {
   const g = new THREE.SphereGeometry(radius, widthSegments, heightSegments);

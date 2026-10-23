@@ -52,8 +52,8 @@ export function flapRate(mode: MacawMode, effort: number): number {
 }
 
 const SPREAD_WING = { sweep: 0, lift: 0.1, twist: 0.06, elbow: 0.12, wrist: 0.05, wristPitch: 0, handSpread: 1, armSpread: 1 };
-// Solved so the elbow sits on the flank, the wrist at the shoulder front and the primaries cross over the rump.
-const FOLDED_WING = { sweep: 1.433, lift: -0.477, twist: -1.124, elbow: 3.147, wrist: 3.663, wristPitch: -0.055, handSpread: 0, armSpread: 0 };
+// Solved so the elbow sits on the flank and the wrist at the shoulder front; lift raised afterwards so the primaries cross just above the tail base.
+const FOLDED_WING = { sweep: 1.433, lift: -0.3, twist: -1.124, elbow: 3.147, wrist: 3.663, wristPitch: -0.055, handSpread: 0, armSpread: 0 };
 type WingJoints = keyof typeof SPREAD_WING;
 
 function foldWing(p: Pose, fold: number): void {
@@ -205,7 +205,7 @@ const modeWalk: ModeFn = (c, p) => {
 
 const modeIdle: ModeFn = (c, p) => {
   foldWing(p, 1);
-  p.bodyPitch = 0.75; // perched macaws stand tall, tail angled down behind
+  p.bodyPitch = 0.65; // perched macaws stand tall, tail angled down behind
   p.breathe = Math.sin(c.t * TAU * 0.45);
   p.neckPitch = -0.45;
   p.headPitch = -0.35;

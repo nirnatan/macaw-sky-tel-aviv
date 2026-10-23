@@ -165,9 +165,9 @@ Object.assign(window, {
     squawk: () => birds.forEach((b) => b.squawk()),
     showTips,
     tips: () => birds.map((b) => b.wingTips.map((t) => t.getWorldPosition(new THREE.Vector3()).toArray().map((v) => +v.toFixed(3)))),
-    atlas(i: number) {
+    atlas(i: number, which: 'map' | 'normalMap' = 'map') {
       const mesh = birds[i].object.children.find((c): c is THREE.SkinnedMesh => c instanceof THREE.SkinnedMesh)!;
-      return ((mesh.material as THREE.MeshPhysicalMaterial).map!.image as HTMLCanvasElement).toDataURL();
+      return ((mesh.material as THREE.MeshPhysicalMaterial)[which]!.image as HTMLCanvasElement).toDataURL();
     },
     advance(seconds: number) { for (let t = 0; t < seconds; t += 1 / 60) step(1 / 60); },
     shot(mode: MacawMode, cam: string, settle = 2, params: Partial<MacawAnimInput> = {}) {
