@@ -12,7 +12,7 @@ import { createCity } from './world/city';
 import { loadCityData } from './world/data';
 import { project } from './geo';
 
-const START = project(32.0835, 34.7685); // Gordon beach
+const START = project(32.0835, 34.7674); // on the sand at Gordon beach
 const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
 
 function detectQuality(): Quality {
@@ -86,7 +86,8 @@ async function boot() {
   scene.add(macaw.object);
 
   const player = new Player(macaw.footOffset);
-  const startYaw = -Math.PI / 2; // facing east, toward the city, with the sunset behind
+  const firstRing = landmarks.rings[0]?.position;
+  const startYaw = firstRing ? Math.atan2(-(firstRing.x - START[0]), -(firstRing.z - START[1])) : -Math.PI / 2;
   player.placeOnGround(START[0], START[1], startYaw, world);
   const chase = new ChaseCamera(camera, renderer.domElement);
 
@@ -133,8 +134,8 @@ async function boot() {
     for (const spot of landmarks.spots) {
       if (found.has(spot.id)) continue;
       const d = Math.hypot(player.position.x - spot.position.x, player.position.z - spot.position.z);
-      const dy = Math.abs(player.position.y - macaw.footOffset - spot.position.y);
-      if (d > spot.radius || dy > 3) continue;
+      const feetY = player.position.y - macaw.footOffset;
+      if (d > spot.radius + 4 || feetY > spot.position.y + 3) continue; // roof or the yard below it both count
       found.add(spot.id);
       saveFound(playerName, found);
       landmarks.setFound(spot.id);
