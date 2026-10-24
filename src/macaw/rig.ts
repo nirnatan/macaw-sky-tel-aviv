@@ -50,7 +50,19 @@ export interface Rig {
   wingTips: [THREE.Object3D, THREE.Object3D]; // left, right: the shaft end of the longest primary
   legs: Leg[];
   meshes: THREE.SkinnedMesh[];
+  surfaces: Surfaces;
   dispose(): void;
+}
+/** Everything the lighting touches. Only values change at runtime, so no program ever recompiles. */
+export interface Surfaces {
+  plumage: THREE.MeshPhysicalMaterial;
+  keratin: THREE.MeshPhysicalMaterial;
+  uniforms: {
+    uLift: { value: number }; // fraction of albedo the plumage re-emits
+    uRim: { value: number }; // strength of the cool fresnel rim
+    uRimColor: { value: THREE.Color };
+    uWet: { value: number }; // 0..1, darkens the albedo
+  };
 }
 
 // Rest-pose landmarks (meters, root space: body center at the origin, facing -Z).
@@ -65,7 +77,6 @@ const THIGH = 0.05;
 const SHANK = 0.075;
 const TARSUS = 0.042;
 const TAIL_BASE = new THREE.Vector3(0, 0.002, 0.165);
-const PLUMAGE_LIFT = 0.16; // fraction of albedo the plumage re-emits, tuned against the game's dusk ambient
 
 export function buildRig(palette: Palette, textures: Atlas, rand: () => number): Rig {
   const object = new THREE.Group();
@@ -303,12 +314,16 @@ export function buildRig(palette: Palette, textures: Atlas, rand: () => number):
     roughness: 0.72, metalness: 0, sheen: 0.7, sheenRoughness: 0.5, sheenColorMap: textures.map,
   });
   // Feathers scatter light through their vanes, so shaded plumage never goes black: re-emit a fraction of the albedo.
-  // `emissive` cannot do this because it ignores the vertex colors.
+  // `emissive` cannot do this because it ignores the vertex colors. The rim adds the sky's cool edge light that separates the bird from a dark sky.
+  const uniforms: Surfaces['uniforms'] = { uLift: { value: 0.16 }, uRim: { value: 0 }, uRimColor: { value: new THREE.Color('#3f8cff') }, uWet: { value: 0 } }; // lift tuned against the game's dusk ambient
   plumageMaterial.onBeforeCompile = (shader) => {
-    shader.uniforms.plumageLift = { value: PLUMAGE_LIFT };
+    Object.assign(shader.uniforms, uniforms);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\ttotalEmissiveRadiance += diffuseColor.rgb * plumageLift;')
-      .replace('uniform vec3 emissive;', 'uniform vec3 emissive;\nuniform float plumageLift;');
+      .replace('uniform vec3 emissive;', 'uniform vec3 emissive;\nuniform float uLift;\nuniform float uRim;\nuniform vec3 uRimColor;\nuniform float uWet;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb *= mix(1.0, 0.82, uWet);')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+	totalEmissiveRadiance += diffuseColor.rgb * uLift;
+	totalEmissiveRadiance += uRimColor * uRim * pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 3.0);`);
   };
   const keratinMaterial = new THREE.MeshPhysicalMaterial({ // satin: beak, legs and claws
     vertexColors: true, roughness: 0.55, metalness: 0, clearcoat: 0.2, clearcoatRoughness: 0.5,
@@ -332,6 +347,7 @@ export function buildRig(palette: Palette, textures: Atlas, rand: () => number):
   return {
     object, body, torso, neck, head, headRest: head.position.clone(), jaw, eyes, tailBase, tail, wings,
     wingTips: [wingTips[0], wingTips[1]], legs, meshes,
+    surfaces: { plumage: plumageMaterial, keratin: keratinMaterial, uniforms },
     dispose() {
       for (const m of meshes) {
         m.geometry.dispose();
