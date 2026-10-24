@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CreateMacaw, Macaw, MacawAnimInput, MacawMode } from '../contracts';
+import type { CreateMacaw, Lighting, Macaw, MacawAnimInput, MacawMode } from '../contracts';
 import { PALETTES } from './palette';
 import { createAtlas, mulberry32 } from './textures';
 import { buildRig, type Rig } from './rig';
@@ -146,6 +146,19 @@ class MacawImpl implements Macaw {
 
   squawk(): void {
     this.gestures.startSquawk();
+  }
+
+  applyLighting(l: Lighting): void {
+    const s = this.rig.surfaces;
+    const w = l.wetness;
+    s.uniforms.uLift.value = lerp(0.16, 0.24, l.night);
+    s.uniforms.uRim.value = lerp(0, 0.35, THREE.MathUtils.smoothstep(l.night, 0.3, 1));
+    s.uniforms.uWet.value = w;
+    s.plumage.roughness = lerp(0.72, 0.5, w);
+    s.plumage.sheen = lerp(0.7, 0.85, w); // never reaches 0: sheen is part of the program key
+    s.plumage.sheenRoughness = lerp(0.5, 0.35, w);
+    s.keratin.clearcoat = lerp(0.2, 0.8, w); // never leaves 0 either
+    s.keratin.clearcoatRoughness = lerp(0.5, 0.15, w);
   }
 
   dispose(): void {
