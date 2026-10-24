@@ -208,8 +208,8 @@ function facadeMaterial(uniforms: CityUniforms): THREE.MeshStandardMaterial {
       diffuseColor.rgb *= (1.0 - uWet * mix(0.08, 0.34, roof)) * (1.0 - 0.15 * roofPuddle);`);
     shader.fragmentShader = after(shader.fragmentShader, 'roughnessmap_fragment', /* glsl */ `
       roughnessFactor = mix(roughnessFactor, 0.2, glass);
-      roughnessFactor = mix(roughnessFactor, 0.28, uWet * roof);
-      roughnessFactor = mix(roughnessFactor, 0.06, roofPuddle);`);
+      roughnessFactor = mix(roughnessFactor, mix(0.28, 0.5, uOvercast), uWet * roof); // under cloud the key is a broad source: no mirror glint toward a hidden sun
+      roughnessFactor = mix(roughnessFactor, mix(0.06, 0.4, uOvercast), roofPuddle);`);
     shader.fragmentShader = after(shader.fragmentShader, 'metalnessmap_fragment', 'metalnessFactor = mix(mix(metalnessFactor, 0.25, glass), 0.35, roofPuddle);');
     shader.fragmentShader = after(shader.fragmentShader, 'emissivemap_fragment',
       'totalEmissiveRadiance += lit * mix(0.7, 1.6, uNight) + glass * diffuseColor.rgb * 0.12 * (1.0 - uNight);');

@@ -97,6 +97,7 @@ export const createCity: CreateCity = (data, opts): City => {
       uniforms.uNight.value = night;
       uniforms.uLitFrac.value = 0.025 + 0.35 * smoothstep(l.night, 0.05, 0.85); // about 60% of windows at full night
       uniforms.uWet.value = l.wetness;
+      uniforms.uOvercast.value = l.overcast;
       lamps.points.visible = night > 0.02;
       if (Math.abs(l.wetness - appliedWet) >= 1e-3) {
         appliedWet = l.wetness;

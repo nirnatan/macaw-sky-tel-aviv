@@ -297,8 +297,8 @@ function flatsMaterial(time: { value: number }, uniforms: CityUniforms): THREE.M
       diffuseColor.rgb = c;`);
     shader.fragmentShader = after(shader.fragmentShader, 'roughnessmap_fragment', /* glsl */ `
       roughnessFactor = mix(roughnessFactor, 0.12, water);
-      roughnessFactor = mix(roughnessFactor, mix(0.45, 0.2, puddleable), wet); // paving stays rougher than asphalt
-      roughnessFactor = mix(roughnessFactor, 0.05, puddle);`);
+      roughnessFactor = mix(roughnessFactor, mix(mix(0.45, 0.2, puddleable), 0.5, uOvercast), wet); // paving stays rougher than asphalt; under cloud no mirror glint toward a hidden sun
+      roughnessFactor = mix(roughnessFactor, mix(0.05, 0.4, uOvercast), puddle);`);
     shader.fragmentShader = after(shader.fragmentShader, 'metalnessmap_fragment', /* glsl */ `
       metalnessFactor = mix(metalnessFactor, 0.55, water);
       metalnessFactor = mix(metalnessFactor, 0.35, puddle);`);

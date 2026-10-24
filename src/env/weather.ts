@@ -67,7 +67,7 @@ export function createWeather(initial: Conditions) {
     keyDir.copy(w < 0.5 ? sunDir : moonDir);
     if (keyDir.y < MIN_KEY_ELEVATION) { keyDir.y = MIN_KEY_ELEVATION; keyDir.normalize(); }
     const envelope = Math.abs(1 - 2 * w); // dims to zero where the direction swaps
-    state.keyIntensity = blended.keyIntensity * envelope * (1 - 0.65 * overcast);
+    state.keyIntensity = blended.keyIntensity * envelope * (1 - 0.9 * overcast); // under full cloud the key is too weak to glint off wet roofs
     state.shadowFade = blended.shadowIntensity * envelope * (1 - 0.8 * overcast);
   }
 

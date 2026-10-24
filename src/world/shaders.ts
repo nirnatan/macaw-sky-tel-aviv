@@ -37,13 +37,14 @@ export function withWorldPos(shader: THREE.WebGLProgramParametersWithUniforms, f
 export interface CityUniforms {
   uNight: { value: number }; // 0 day .. 1 night, already eased so the sunset row reads 0
   uWet: { value: number };
+  uOvercast: { value: number }; // 0 clear .. 1 full cloud: wet gloss loses its sharp sun highlight
   uLitFrac: { value: number }; // share of window cells lit
   uPoolMinHw: { value: number }; // narrowest road half width that has lamps on this tier
 }
 export function createCityUniforms(): CityUniforms {
-  return { uNight: { value: 0 }, uWet: { value: 0 }, uLitFrac: { value: 0.025 }, uPoolMinHw: { value: 0 } };
+  return { uNight: { value: 0 }, uWet: { value: 0 }, uOvercast: { value: 0 }, uLitFrac: { value: 0.025 }, uPoolMinHw: { value: 0 } };
 }
-export const CITY_UNIFORMS_GLSL = 'uniform float uNight, uWet, uLitFrac, uPoolMinHw;\n';
+export const CITY_UNIFORMS_GLSL = 'uniform float uNight, uWet, uOvercast, uLitFrac, uPoolMinHw;\n';
 
 export function srgb(hex: string | number): [number, number, number] {
   const c = new THREE.Color(hex);
