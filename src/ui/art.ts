@@ -164,3 +164,27 @@ export const flyingMacawSilhouette = `<svg viewBox="0 0 160 100" aria-hidden="tr
   </g>
   <circle cx="115" cy="40" r="2.600" fill="#ffd9a0"/>
 </svg>`;
+
+/** A phone tipped to one side between two curved "tilt" arrows. */
+export const tiltIcon = `<svg viewBox="0 0 48 48" aria-hidden="true">
+  <path d="M8 18a17 17 0 0 0 0 12M40 18a17 17 0 0 1 0 12" fill="none" stroke="#ff8a3d" stroke-width="3" stroke-linecap="round"/>
+  <path d="M4.500 21 8 17l3 4.200M43.500 27 40 31l-3-4.200" fill="none" stroke="#ff8a3d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="rotate(-18 24 24)"><rect x="15" y="8" width="18" height="32" rx="4" fill="#4aa3ff" stroke="#fff" stroke-width="2.400"/><rect x="18" y="12" width="12" height="22" rx="1.500" fill="#cfe8ff"/><circle cx="24" cy="37" r="1.300" fill="#fff"/></g>
+</svg>`;
+
+/** A spirit level: "make this hold the new straight". */
+export const centerIcon = `<svg viewBox="0 0 24 24" aria-hidden="true">
+  <rect x="2.500" y="8" width="19" height="8" rx="4" fill="#fff6d6" stroke="#4a2433" stroke-width="1.800"/>
+  <path d="M9 8v8M15 8v8" stroke="#4a2433" stroke-width="1.400" opacity=".5"/>
+  <circle cx="12" cy="12" r="2.200" fill="#26c6a0"/>
+</svg>`;
+
+/** Portrait phone that the CSS turns sideways; `.mc-phone` is the rotating group. */
+export const rotatePhoneArt = `<svg viewBox="0 0 64 64" aria-hidden="true">
+  <path d="M50 14a24 24 0 0 1 4 26" fill="none" stroke="#ffc928" stroke-width="3.500" stroke-linecap="round"/>
+  <path d="M57.500 37 54 42.500 49 38.500" fill="none" stroke="#ffc928" stroke-width="3.500" stroke-linecap="round" stroke-linejoin="round"/>
+  <g class="mc-phone"><rect x="21" y="10" width="22" height="40" rx="5" fill="#4a2433" stroke="#fff" stroke-width="2.600"/><rect x="24.500" y="15" width="15" height="29" rx="2" fill="#ffb86b"/><path d="M26 34c3-4 6-4 9-1 2-2 3-2 4-1" stroke="#fff" stroke-width="1.600" fill="none" stroke-linecap="round"/><circle cx="32" cy="22" r="3" fill="#fff3b0"/></g>
+</svg>`;
+
+export const shareIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.500 7.500 12 3l4.500 4.500M8 10.500H6.500a1.500 1.500 0 0 0-1.500 1.500v7.500A1.500 1.500 0 0 0 6.500 21h11a1.500 1.500 0 0 0 1.500-1.500V12a1.500 1.500 0 0 0-1.500-1.500H16" fill="none" stroke="#2f7cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+export const addToHomeIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.500" y="3.500" width="17" height="17" rx="4" fill="none" stroke="#4a2433" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="#4a2433" stroke-width="2" stroke-linecap="round"/></svg>';

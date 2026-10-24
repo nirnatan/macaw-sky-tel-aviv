@@ -44,8 +44,7 @@ export function createTouchControls(root: HTMLElement, hooks: InputHooks) {
     joystick.pointerId = -1; joystick.x = 0; joystick.y = 0;
     stick.classList.remove('active');
     knob.style.transform = '';
-    stick.style.left = 'calc(var(--u) * 1.9 + 8px)';
-    stick.style.top = 'calc(100% - var(--u) * 1.9 - 8px)';
+    stick.style.left = stick.style.top = ''; // back to the resting spot in touch.css
   };
   resetStick();
 
@@ -97,7 +96,7 @@ export function createTouchControls(root: HTMLElement, hooks: InputHooks) {
   }
 
   layer.addEventListener('contextmenu', stopDefault);
-  root.addEventListener('touchmove', stopDefault, { passive: false });
+  root.addEventListener('touchmove', (e) => { if (!(e.target instanceof Element && e.target.closest('[data-scrollable]'))) e.preventDefault(); }, { passive: false });
   const blockPinch = (e: Event) => e.preventDefault();
   document.addEventListener('gesturestart', blockPinch);
   document.addEventListener('gesturechange', blockPinch);

@@ -133,7 +133,8 @@ const loop = () => {
   if (s.landToggle) audio.land();
   const audioMix: AudioMix = { speed: frame.speed + (s.boost ? 14 : 0), altitude: frame.altitude, distanceToCoast: 200 + 1500 * (0.5 + 0.5 * Math.sin(t * 0.2)), flying: true, effort: s.flap ? 1 : 0.4, ...mix };
   audio.update(audioMix);
-  readout.textContent = JSON.stringify({ ...s, steer: +s.steer.toFixed(2), climb: +s.climb.toFixed(2), ...ui.settings, mix: { night: +mix.night.toFixed(2), rain: +mix.rain.toFixed(2), morning: +mix.morning.toFixed(2) } }, null, 1).replace(/\n\s*/g, ' ');
+  const screenAngle = { angle: screen.orientation?.angle, windowOrientation: (window as { orientation?: number }).orientation }; // tilt maps through this; check it on a real iPhone
+  readout.textContent = JSON.stringify({ ...s, steer: +s.steer.toFixed(2), climb: +s.climb.toFixed(2), ...ui.settings, ...screenAngle, mix: { night: +mix.night.toFixed(2), rain: +mix.rain.toFixed(2), morning: +mix.morning.toFixed(2) } }, null, 1).replace(/\n\s*/g, ' ');
   input.endFrame();
   requestAnimationFrame(loop);
 };
