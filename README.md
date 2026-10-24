@@ -12,9 +12,11 @@ A browser game made for Amit and Or. Fly a blue-and-gold or scarlet macaw at gol
 | Land / take off | L | Land button | B |
 | Squawk | X | Macaw button | Y |
 | Barrel roll | Q / E | | LB / RB |
+| Next time of day (sunrise, noon, sunset, night) | T | Pause menu | D-pad left / right |
+| Rain on or off | R | Pause menu | D-pad up / down |
 | Pause | Esc or P | Pause button | Start |
 
-Press Land anywhere to glide down. Near a special place, the macaw homes in and lands on it.
+The start screen and the pause menu also pick the time of day and the rain. Press Land anywhere to glide down. Near a special place, the macaw homes in and lands on it.
 
 ## Development
 

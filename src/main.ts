@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import type { Macaw, PlayerName, Quality, Species, TargetHud, TargetId } from './contracts';
+import type { Lighting, Macaw, PlayerName, Quality, Species, TargetHud, TargetId } from './contracts';
 import { createAudio } from './audio';
 import { createEnvironment } from './env';
+import { createRain } from './fx/rain';
 import { createTurboFlames } from './fx/turbo-flames';
 import { createLandmarks } from './game/landmarks';
 import { createInput } from './input';
@@ -52,9 +53,10 @@ async function boot() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 30000);
   const env = createEnvironment({ renderer, scene, camera, sea: data.sea, quality });
+  env.setConditions(ui.settings, { instant: true }); // the first frame is already the saved time of day
   ui.setLoading(0.45);
   await nextFrame();
-  const city = createCity(data, { scene, quality, sunDirection: env.sunDirection });
+  const city = createCity(data, { scene, quality });
   scene.add(city.group);
   ui.setLoading(0.8, 'מקשטים את הגן ובית הספר… · Decorating the school and the gan…');
   await nextFrame();
@@ -73,6 +75,8 @@ async function boot() {
     },
     collide: (center, radius) => city.collide(center, radius),
   };
+  const rain = createRain({ quality, surfaceAt: (x, z, b) => world.surfaceAt(x, z, b) });
+  scene.add(rain.object);
 
   const macaws = new Map<Species, Macaw>();
   let species: Species = 'blueGold';
@@ -96,7 +100,7 @@ async function boot() {
   const startYaw = firstRing ? Math.atan2(-(firstRing.x - START[0]), -(firstRing.z - START[1])) : -Math.PI / 2;
   player.placeOnGround(START[0], START[1], Math.PI / 2, world); // on the menu the bird faces the sunset, so its face is sunlit
   const chase = new ChaseCamera(camera, renderer.domElement);
-  const heroLight = new THREE.PointLight(0xffeedd, 3, 7, 2); // short-range fill so the macaw reads against the low sun
+  const heroLight = new THREE.PointLight(0xffeedd, 3, 7, 2); // short-range fill so the macaw reads; never hidden (light count is in every program key)
   scene.add(heroLight);
   const heroOffset = new THREE.Vector3(0.6, 0.8, 0);
 
@@ -120,12 +124,18 @@ async function boot() {
   const coast = data.coast;
 
   ui.onPause((p) => { if (phase !== 'menu') phase = p ? 'paused' : 'playing'; });
+  let conditionsKey = `${ui.settings.time}|${ui.settings.rain}`;
   const applySettings = () => {
     audio.setMuted(ui.settings.muted);
     audio.setMusic(ui.settings.music);
+    const key = `${ui.settings.time}|${ui.settings.rain}`;
+    if (key !== conditionsKey) { conditionsKey = key; env.setConditions(ui.settings); } // sound or quality toggles never restart a blend
     const q = ui.settings.quality === 'auto' ? detectQuality() : ui.settings.quality;
-    if (q !== quality) { quality = q; env.setQuality(q); city.setQuality(q); flames.setQuality(q); }
+    if (q !== quality) { quality = q; setQualityEverywhere(q); }
   };
+  function setQualityEverywhere(q: Quality) {
+    env.setQuality(q); city.setQuality(q); flames.setQuality(q); rain.setQuality(q);
+  }
   ui.onSettings(applySettings);
 
   function distanceToCoast(x: number, z: number) {
@@ -186,6 +196,25 @@ async function boot() {
     };
   }
 
+  // Night and rain objects compile on their first visible draw, so compile everything once, all on, behind the loader.
+  async function warmUpShaders() {
+    const allOn: Lighting = {
+      sunDirection: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(1, 1, 1), hazeColor: new THREE.Color(0.5, 0.5, 0.5),
+      night: 1, morning: 1, rain: 1, wetness: 1, overcast: 1, rainbow: 1,
+    };
+    const birds = (['blueGold', 'scarlet'] as const).map(getMacaw);
+    for (const b of birds) { if (!b.object.parent) scene.add(b.object); b.applyLighting(allOn); }
+    city.applyLighting(allOn);
+    landmarks.applyLighting(allOn);
+    rain.update(0, allOn, camera);
+    const linearTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }); // the composer renders into linear half-float, so compile those variants
+    renderer.setRenderTarget(linearTarget);
+    await renderer.compileAsync(scene, camera);
+    renderer.setRenderTarget(null);
+    linearTarget.dispose();
+    for (const b of birds) if (b !== macaw) b.object.removeFromParent();
+  }
+
   const timer = new THREE.Timer();
   let fpsAccum = 0, fpsFrames = 0, slowSeconds = 0;
 
@@ -199,6 +228,10 @@ async function boot() {
       menuTime += dt;
       macaw.object.position.copy(player.position);
       macaw.object.quaternion.copy(player.quaternion);
+      const key = env.lighting.sunDirection; // the menu bird turns its face to the sun or the moon
+      const faceLight = Math.atan2(-key.x, -key.z);
+      const turn = Math.atan2(Math.sin(faceLight - player.yaw), Math.cos(faceLight - player.yaw));
+      if (Math.abs(turn) > 1e-3) player.placeOnGround(START[0], START[1], player.yaw + Math.sign(turn) * Math.min(Math.abs(turn), dt), world);
       macaw.update(dt, { mode: 'idle', effort: 0, bank: 0, pitch: 0, walkSpeed: 0, look: Math.sin(menuTime * 0.7) * 0.6 });
       const a = player.yaw + 0.5 + Math.sin(menuTime * 0.25) * 0.6; // sway around a three-quarter front view
       camera.position.set(player.position.x - Math.sin(a) * 1.3, player.position.y + 0.1, player.position.z - Math.cos(a) * 1.3);
@@ -233,14 +266,25 @@ async function boot() {
       ui.updateHud(hudFrame());
     }
 
+    env.update(dt, player.position); // first, so every consumer below reads this frame's lighting
+    const L = env.lighting;
+    city.applyLighting(L);
+    landmarks.applyLighting(L);
+    macaw.applyLighting(L);
+    heroLight.intensity = THREE.MathUtils.lerp(3, 8, L.night);
+    heroLight.distance = THREE.MathUtils.lerp(7, 10, L.night);
+    heroLight.position.copy(heroOffset).applyQuaternion(camera.quaternion).add(camera.position);
+    rain.update(dt, L, camera);
+
     if (phase !== 'paused') {
       const dive = player.flying ? THREE.MathUtils.clamp((player.speed - 26) / 20, 0, 1) : 0;
       env.setSpeedEffect(Math.max(player.boost * 0.8, dive));
-      audio.update({ speed: player.flying ? player.speed : 0, altitude: player.altitude, distanceToCoast: distanceToCoast(player.position.x, player.position.z), flying: player.flying, effort: inp.flap ? 1 : 0.3 });
+      audio.update({
+        speed: player.flying ? player.speed : 0, altitude: player.altitude, distanceToCoast: distanceToCoast(player.position.x, player.position.z),
+        flying: player.flying, effort: inp.flap ? 1 : 0.3, night: L.night, rain: L.rain, morning: L.morning,
+      });
       landmarks.update(dt, camera, player.position);
     }
-    heroLight.position.copy(heroOffset).applyQuaternion(camera.quaternion).add(camera.position);
-    env.update(dt, player.position);
     city.update(camera);
     env.render(dt);
     input.endFrame();
@@ -252,7 +296,7 @@ async function boot() {
         slowSeconds = fps < 40 ? slowSeconds + 1 : 0;
         if (slowSeconds >= 4 && quality !== 'low') {
           quality = quality === 'high' ? 'medium' : 'low';
-          env.setQuality(quality); city.setQuality(quality); flames.setQuality(quality);
+          setQualityEverywhere(quality);
           env.setSize(innerWidth, innerHeight);
           slowSeconds = 0;
         }
@@ -261,9 +305,10 @@ async function boot() {
     }
   }
 
+  await warmUpShaders();
   ui.setLoading(1);
   frame();
-  if (import.meta.env.DEV) Object.assign(window, { game: { player, camera, landmarks, world, scene, renderer, city, env, get phase() { return phase; }, get found() { return [...found]; }, get rings() { return ringsCollected; } } });
+  if (import.meta.env.DEV) Object.assign(window, { game: { player, camera, landmarks, world, scene, renderer, city, env, rain, setConditions: (c: Parameters<typeof env.setConditions>[0]) => env.setConditions(c), get phase() { return phase; }, get found() { return [...found]; }, get rings() { return ringsCollected; } } });
 
   const choice = await ui.showStart((c) => setSpecies(c.species));
   setSpecies(choice.species);
