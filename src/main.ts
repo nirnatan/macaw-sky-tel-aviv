@@ -211,13 +211,19 @@ async function boot() {
     const linearTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }); // the composer renders into linear half-float, so compile those variants
     renderer.setRenderTarget(linearTarget);
     await renderer.compileAsync(scene, camera);
+    // compileAsync never draws, so the shadow-depth variants (double-sided and instanced casters) and every program's
+    // first-use driver work would land on the first gameplay frame that needs them. One all-on frame with nothing culled pays for them here.
+    const culled: THREE.Object3D[] = [];
+    scene.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); } });
+    renderer.render(scene, camera);
+    for (const o of culled) o.frustumCulled = true;
     renderer.setRenderTarget(null);
     linearTarget.dispose();
     for (const b of birds) if (b !== macaw) b.object.removeFromParent();
   }
 
   const timer = new THREE.Timer();
-  let fpsAccum = 0, fpsFrames = 0, slowSeconds = 0;
+  let fpsAccum = 0, fpsFrames = 0, slowSeconds = 0, programsChecked = false, programsAfterWarmUp = 0;
 
   function frame() {
     requestAnimationFrame(frame);
@@ -292,6 +298,11 @@ async function boot() {
     city.update(camera);
     env.render(dt);
     input.endFrame();
+    if (import.meta.env.DEV && playTime > 60 && !programsChecked) { // the no-recompile rule: the all-on warm-up must have met every program
+      programsChecked = true;
+      const n = renderer.info.programs?.length ?? 0;
+      if (n !== programsAfterWarmUp) console.error(`shaders compiled during play: ${programsAfterWarmUp} after warm-up, ${n} after a minute`);
+    }
 
     if (ui.settings.quality === 'auto' && phase === 'playing') {
       fpsAccum += dt; fpsFrames++;
@@ -312,7 +323,8 @@ async function boot() {
   await warmUpShaders();
   ui.setLoading(1);
   frame();
-  if (import.meta.env.DEV) Object.assign(window, { game: { player, camera, landmarks, world, scene, renderer, city, env, rain, setConditions: (c: Parameters<typeof env.setConditions>[0]) => env.setConditions(c), get phase() { return phase; }, get found() { return [...found]; }, get rings() { return ringsCollected; } } });
+  programsAfterWarmUp = renderer.info.programs?.length ?? 0; // the first frame also compiled the post chain
+  if (import.meta.env.DEV) Object.assign(window, { game: { player, camera, landmarks, world, scene, renderer, city, env, rain, get programsAfterWarmUp() { return programsAfterWarmUp; }, setConditions: (c: Parameters<typeof env.setConditions>[0]) => env.setConditions(c), get phase() { return phase; }, get found() { return [...found]; }, get rings() { return ringsCollected; } } });
 
   const choice = await ui.showStart((c) => setSpecies(c.species));
   setSpecies(choice.species);
