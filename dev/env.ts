@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { Quality } from '../src/contracts';
-import { createEnvironment } from '../src/env';
+import { TIMES, type Conditions, type Quality, type TimeOfDay } from '../src/contracts';
+import { createEnvironment, envDev } from '../src/env';
 import { loadCityData, type Ring } from '../src/world/data';
 
 const COAST_X = -3300;
@@ -43,6 +43,8 @@ const PRESETS: Record<string, Preset> = {
   streets: { position: [COAST_X + 250, 110, 300], target: [COAST_X + 650, 0, 150] },
   overview: { position: [COAST_X + 900, 300, 1500], target: [COAST_X - 200, 0, -700] },
   skim: { position: [COAST_X - 150, 3, 150], target: [COAST_X - 1100, 2, 400], drift: [-22, 0, 6] },
+  north: { position: [COAST_X + 300, 60, 500], target: [COAST_X + 300, 160, -900] },
+  moon: { position: [COAST_X + 200, 60, 200], target: [COAST_X + 900, 550, 900] },
 };
 
 const params = new URLSearchParams(location.search);
@@ -63,10 +65,16 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(20000, 20000).rotateX(-Mat
 ground.position.x = 5000;
 ground.receiveShadow = true;
 scene.add(ground, placeholderBlocks(data.sea));
+const probe = new THREE.Mesh(new THREE.SphereGeometry(12, 48, 24), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.12, metalness: 1 })); // mirrors the env map
+probe.position.set(COAST_X + 330, 70, 150);
+scene.add(probe);
 
 const buildStart = performance.now();
 const env = createEnvironment({ renderer, scene, camera, sea: data.sea, quality });
 const envBuildMs = Math.round(performance.now() - buildStart);
+
+const conditions: Conditions = { time: (params.get('time') ?? 'sunset') as TimeOfDay, rain: params.get('rain') === '1' };
+env.setConditions(conditions, { instant: true });
 
 const focus = new THREE.Vector3();
 let preset = params.get('preset') ?? 'beach';
@@ -94,8 +102,19 @@ const button = (label: string, onClick: () => void) => {
 for (const name of Object.keys(PRESETS)) button(name, () => setPreset(name));
 for (const q of ['low', 'medium', 'high'] as const) button(q, () => setQuality(q));
 button('speed', () => env.setSpeedEffect((speed = speed > 0 ? 0 : 1)));
+for (const t of TIMES) button(t, () => setConditions({ time: t }));
+button('T', cycleTime);
+button('R', toggleRain);
 
 function setPreset(name: string) { preset = name; presetTime = 0; return name; }
+function setConditions(c: Partial<Conditions>, instant = false) {
+  Object.assign(conditions, c);
+  env.setConditions(conditions, { instant });
+  return { ...conditions };
+}
+function cycleTime() { return setConditions({ time: TIMES[(TIMES.indexOf(conditions.time) + 1) % TIMES.length] }); }
+function toggleRain() { return setConditions({ rain: !conditions.rain }); }
+addEventListener('keydown', (e) => { if (e.key === 't') cycleTime(); if (e.key === 'r') toggleRain(); });
 function setQuality(q: Quality) { quality = q; env.setQuality(q); return q; }
 
 const timer = new THREE.Timer();
@@ -111,8 +130,10 @@ function updateHud(dt: number) {
   frames++; fpsTime += dt;
   if (fpsTime > 0.5) { fps = frames / fpsTime; frames = 0; fpsTime = 0; }
   const { render, memory, programs } = renderer.info;
+  const L = env.lighting;
   hud.textContent = `${fps.toFixed(0)} fps  ${quality}  ${preset}  dpr ${renderer.getPixelRatio()}  env build ${envBuildMs} ms\n`
-    + `calls ${render.calls}  tris ${render.triangles}  geo ${memory.geometries}  tex ${memory.textures}  programs ${programs?.length ?? 0}`;
+    + `calls ${render.calls}  tris ${render.triangles}  geo ${memory.geometries}  tex ${memory.textures}  programs ${programs?.length ?? 0}  bakes ${envDev.bakes}\n`
+    + `${conditions.time}${conditions.rain ? ' rain' : ''}  night ${L.night.toFixed(2)}  rain ${L.rain.toFixed(2)}  wet ${L.wetness.toFixed(2)}  overcast ${L.overcast.toFixed(2)}  rainbow ${L.rainbow.toFixed(2)}  shared ${envDev.sharedUniformsOk}`;
 }
 
 renderer.setAnimationLoop(() => {
@@ -146,7 +167,9 @@ function benchmark(count = 120, pixelRatio?: number) {
 
 Object.assign(window, {
   scene, renderer, camera, env, envBuildMs,
-  setPreset, setQuality, benchmark,
+  setPreset, setQuality, benchmark, envDev,
+  setConditions, cycleTime, toggleRain,
+  lighting: () => { const L = env.lighting; return { night: L.night, morning: L.morning, rain: L.rain, wetness: L.wetness, overcast: L.overcast, rainbow: L.rainbow, sun: L.sunDirection.toArray(), sunColor: L.sunColor.toArray(), programs: renderer.info.programs?.length, bakes: envDev.bakes, shared: envDev.sharedUniformsOk }; },
   setSpeed: (a: number) => env.setSpeedEffect((speed = a)),
   advance: (seconds: number) => { for (let t = 0; t < seconds; t += 1 / 30) frame(1 / 30); },
 });
