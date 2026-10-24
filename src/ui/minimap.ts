@@ -1,10 +1,10 @@
 import type { HudFrame } from '../contracts';
+import { placeById } from '../places';
 import type { CityData } from '../world/data';
 import { renderCityMap, type CityMap } from './cityMap';
 import { UI_TEXT } from './strings';
 
 const VIEW_RADIUS = 650; // meters from the bird to the rim
-const PIN_COLORS = { school: '#ff6247', gan: '#26c6a0' } as const;
 
 export function createMinimap(data: CityData) {
   const canvas = document.createElement('canvas');
@@ -31,7 +31,7 @@ export function createMinimap(data: CityData) {
     ctx.beginPath(); ctx.arc(x, y, unit * (found ? 5 : 6 + Math.sin(time * 6) * 0.8), 0, Math.PI * 2);
     ctx.fillStyle = found ? '#ffc928' : color; ctx.fill();
     ctx.lineWidth = unit * 2; ctx.strokeStyle = '#fff'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y, unit * 2, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, unit * 2, 0, Math.PI * 2); ctx.fillStyle = found ? color : '#fff'; ctx.fill(); // a found pin keeps its place color in the middle
   };
 
   return {
@@ -69,7 +69,7 @@ export function createMinimap(data: CityData) {
         const dist = Math.hypot(sx, sy);
         const outside = dist > rimLimit;
         if (outside) { sx = (sx / dist) * rimLimit; sy = (sy / dist) * rimLimit; }
-        drawPin(half + sx, half + sy, PIN_COLORS[hud.id], hud.found, time, unit * (outside ? 0.8 : 1));
+        drawPin(half + sx, half + sy, placeById(hud.id).color, hud.found, time, unit * (outside ? 0.8 : 1));
       }
 
       const nx = -sin, ny = -cos; // north on the rotated map

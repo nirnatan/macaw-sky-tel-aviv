@@ -1,17 +1,17 @@
 import type { HudFrame, Input, TargetHud } from '../contracts';
 import type { CityData } from '../world/data';
-import { checkIcon, compassArrow, pauseIcon, ringIcon, targetIcon } from './art';
+import { PLACES, placeById, type Place } from '../places';
+import { checkIcon, compassArrow, pauseIcon, placeIcon, ringIcon } from './art';
 import { el } from './dom';
 import { createMinimap } from './minimap';
-import { TARGETS, UI_TEXT, formatDistance, hintHtml } from './strings';
+import { UI_TEXT, formatDistance, hintHtml } from './strings';
 
-const TARGET_IDS = ['school', 'gan'] as const;
 const AHEAD_RADIANS = 0.22;
 
-const badgeHtml = (id: (typeof TARGET_IDS)[number]) => `
-  <div class="mc-badge mc-glass" data-target="${id}">
-    <div class="mc-icon">${targetIcon(id)}<span class="mc-got">${checkIcon}</span></div>
-    <div class="mc-name"><span class="mc-he" lang="he" dir="rtl">${TARGETS[id].he}</span><small>${TARGETS[id].en}</small></div>
+const badgeHtml = (place: Place) => `
+  <div class="mc-badge mc-glass" data-target="${place.id}" style="--place: ${place.color}">
+    <div class="mc-icon">${placeIcon(place)}<span class="mc-got">${checkIcon}</span></div>
+    <div class="mc-name"><span class="mc-he" lang="he" dir="rtl">${place.nameHe}</span><small>${place.nameEn}</small></div>
   </div>`;
 
 const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -25,7 +25,7 @@ export function createHud(parent: HTMLElement, data: CityData, input: Input, onP
   hud.hidden = true;
   hud.innerHTML = `
     <div class="mc-top-left">
-      ${TARGET_IDS.map(badgeHtml).join('')}
+      <div class="mc-places">${PLACES.map(badgeHtml).join('')}</div>
       <div class="mc-rings mc-glass">${ringIcon}<span class="mc-ring-count">0</span><small>/ 0</small></div>
     </div>
     <div class="mc-compass mc-glass">
@@ -46,7 +46,7 @@ export function createHud(parent: HTMLElement, data: CityData, input: Input, onP
   const pauseButton = hud.querySelector<HTMLButtonElement>('.mc-pause-btn')!;
   pauseButton.addEventListener('click', () => { pauseButton.blur(); onPauseClick(); });
 
-  const badges = Object.fromEntries(TARGET_IDS.map((id) => [id, hud.querySelector<HTMLElement>(`[data-target="${id}"]`)!]));
+  const badges = Object.fromEntries(PLACES.map(({ id }) => [id, hud.querySelector<HTMLElement>(`[data-target="${id}"]`)!]));
   const dial = hud.querySelector<HTMLElement>('.mc-dial')!;
   const arrow = hud.querySelector<HTMLElement>('.mc-arrow')!;
   const compassHe = hud.querySelector<HTMLElement>('.mc-compass-text .mc-he')!;
@@ -72,8 +72,9 @@ export function createHud(parent: HTMLElement, data: CityData, input: Input, onP
     const bearing = wrapAngle(nearest.bearing);
     arrow.style.transform = `rotate(${bearing}rad)`;
     dial.classList.toggle('ahead', Math.abs(bearing) < AHEAD_RADIANS);
-    setText(compassHe, `${TARGETS[nearest.id].he} · ${formatDistance(nearest.distance, 'he')}`);
-    setText(compassEn, `${TARGETS[nearest.id].en} · ${formatDistance(nearest.distance, 'en')}`);
+    const place = placeById(nearest.id);
+    setText(compassHe, `${place.nameHe} · ${formatDistance(nearest.distance, 'he')}`);
+    setText(compassEn, `${place.nameEn} · ${formatDistance(nearest.distance, 'en')}`);
   };
 
   return {

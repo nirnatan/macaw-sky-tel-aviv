@@ -1,4 +1,5 @@
-import type { InputState, PlayerName, Species, TimeOfDay } from '../contracts';
+import type { InputState, PlayerName, Species, TargetId, TimeOfDay } from '../contracts';
+import { placeById } from '../places';
 
 export interface Bilingual { he: string; en: string }
 type Device = InputState['device'];
@@ -14,11 +15,6 @@ export const PLAYERS: Record<PlayerName, Bilingual> = {
 export const SPECIES: Record<Species, Bilingual> = {
   blueGold: { he: 'ארה כחול-צהוב', en: 'Blue & Gold Macaw' },
   scarlet: { he: 'ארה אדום', en: 'Scarlet Macaw' },
-};
-
-export const TARGETS: Record<'school' | 'gan', Bilingual> = {
-  school: { he: 'ביה״ס דוד ילין', en: 'David Yellin School' },
-  gan: { he: 'גן הדר', en: 'Gan Hadar' },
 };
 
 export const UI_TEXT = {
@@ -78,16 +74,21 @@ export function formatDistance(meters: number, lang: keyof Bilingual): string {
   return `${Math.round(meters / 10) * 10} ${METERS[lang]}`;
 }
 
-export function celebrationText(target: 'school' | 'gan' | 'all', player: PlayerName): { title: Bilingual; sub: Bilingual | null } {
+const WELCOME_HOME: Bilingual = { he: 'ברוך הבא הביתה!', en: 'Welcome home!' };
+
+export function celebrationText(target: TargetId | 'all', player: PlayerName): { title: Bilingual; sub: Bilingual | null } {
   const name = PLAYERS[player];
   if (target === 'all') {
     return {
       title: { he: `${name.he}, אתה תוכי-על!`, en: 'Super macaw!' },
-      sub: { he: 'מצאת את שני המקומות', en: `${name.en}, you found both places!` },
+      sub: { he: UI_TEXT.allFound.he, en: `${name.en}, you found every place!` },
     };
   }
-  const place = TARGETS[target];
-  return { title: { he: `${name.he} מצא את ${place.he}!`, en: `${name.en} found ${place.en}!` }, sub: null };
+  const place = placeById(target);
+  return {
+    title: { he: `${name.he} מצא את ${place.nameHe}!`, en: `${name.en} found ${place.nameEn}!` },
+    sub: place.style === 'home' ? WELCOME_HOME : null,
+  };
 }
 
 /** Hint keys the game may put in HudFrame.hint. Unknown keys render nothing. */
