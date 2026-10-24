@@ -54,7 +54,7 @@ varying vec3 vDir;
 ${ATMOSPHERE_GLSL}
 ${CLOUDS_GLSL}
 const float SUN_RADIUS = 0.014; // radians, ~3x the real sun so it reads on screen
-const float MOON_RADIUS = 0.035; // a storybook moon
+const float MOON_RADIUS = 0.06; // a storybook moon
 const vec3 MOON_COLOR = vec3(1.0, 0.97, 0.88);
 
 vec3 hash33(vec3 p) {
@@ -114,7 +114,7 @@ void main() {
   float mr = acos(clamp(dot(dir, uAtmoMoonDir), -1.0, 1.0)) / MOON_RADIUS;
   float mdisk = 1.0 - smoothstep(0.9, 1.0, mr);
   float mlimb = 0.72 + 0.28 * sqrt(max(1.0 - mr * mr, 0.0));
-  float mhalo = exp(-mr * 1.1) * 0.08;
+  float mhalo = exp(-mr * 0.6) * 0.2;
   col += MOON_COLOR * (mdisk * mlimb * 2.2 + mhalo) * nightVis * (1.0 - ATMO_OVERCAST * 0.9) * cover * uDecor;
 
   col += rainbow(dir) * ATMO_RAINBOW * (1.0 - cl.a * 0.6) * 0.55 * uDecor;

@@ -49,7 +49,7 @@ const rgb = (r: number, g: number, b: number) => new THREE.Color(r, g, b);
 
 export const PRESETS: Record<TimeOfDay, Row> = {
   sunrise: {
-    sunAz: 100, sunEl: 6, moonAz: 135, moonEl: 35, keyFromMoon: 0,
+    sunAz: 100, sunEl: 6, moonAz: 235, moonEl: 18, keyFromMoon: 0,
     sunLight: srgb('#ffb070'), keyIntensity: 3.6, shadowIntensity: 1,
     sunDisk: srgb('#ffd090', 20),
     skyZenith: srgb('#4a78b8'),
@@ -71,7 +71,7 @@ export const PRESETS: Record<TimeOfDay, Row> = {
     night: 0.05, morning: 1, stars: 0, sunUp: 1,
   },
   noon: {
-    sunAz: 180, sunEl: 58, moonAz: 135, moonEl: 35, keyFromMoon: 0, // never above 60: atmoSunSide and the shadow box assume a slanted sun
+    sunAz: 180, sunEl: 58, moonAz: 235, moonEl: 18, keyFromMoon: 0, // never above 60: atmoSunSide and the shadow box assume a slanted sun
     sunLight: srgb('#fff4e6'), keyIntensity: 3.4, shadowIntensity: 1,
     sunDisk: srgb('#ffffff', 24),
     skyZenith: srgb('#2f6fd0'),
@@ -93,7 +93,7 @@ export const PRESETS: Record<TimeOfDay, Row> = {
     night: 0, morning: 0, stars: 0, sunUp: 1,
   },
   sunset: {
-    sunAz: 255, sunEl: 8.5, moonAz: 135, moonEl: 35, keyFromMoon: 0,
+    sunAz: 255, sunEl: 8.5, moonAz: 235, moonEl: 18, keyFromMoon: 0,
     sunLight: srgb('#ff8f45'), keyIntensity: 4.2, shadowIntensity: 1,
     sunDisk: srgb('#ffb060', 22),
     skyZenith: srgb('#35609a'),
@@ -115,7 +115,7 @@ export const PRESETS: Record<TimeOfDay, Row> = {
     night: 0.15, morning: 0, stars: 0, sunUp: 1,
   },
   night: {
-    sunAz: 255, sunEl: -8, moonAz: 135, moonEl: 35, keyFromMoon: 1,
+    sunAz: 255, sunEl: -8, moonAz: 235, moonEl: 18, keyFromMoon: 1,
     sunLight: srgb('#bcd0ff'), keyIntensity: 0.85, shadowIntensity: 0.45,
     sunDisk: srgb('#ffb060', 22),
     skyZenith: srgb('#0a1538'),
@@ -133,7 +133,7 @@ export const PRESETS: Record<TimeOfDay, Row> = {
     hemiSky: srgb('#4a62a8'), hemiGround: srgb('#201c30'), hemiIntensity: 0.7,
     fogDensity: 0.00035, envIntensity: 0.35, exposure: 1.4,
     gradeShadow: rgb(0.92, 0.96, 1.14), gradeHighlight: rgb(1.0, 1.0, 1.04), aoColor: srgb('#05060e'),
-    seaDeep: rgb(0.002, 0.006, 0.02), seaShallow: rgb(0.006, 0.02, 0.035), seaAmbient: rgb(0.25, 0.3, 0.45),
+    seaDeep: rgb(0.006, 0.02, 0.06), seaShallow: rgb(0.02, 0.06, 0.1), seaAmbient: rgb(0.25, 0.3, 0.45),
     night: 1, morning: 0, stars: 1, sunUp: 0,
   },
 };
