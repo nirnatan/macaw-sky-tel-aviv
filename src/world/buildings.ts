@@ -183,7 +183,7 @@ function colored(g: THREE.BufferGeometry, hex: string): THREE.BufferGeometry {
 }
 /** Israeli solar water heater: a south-facing tilted panel with the white tank above its top edge. */
 function heaterGeometry(): THREE.BufferGeometry {
-  const panel = colored(new THREE.BoxGeometry(1.9, 0.07, 1.15), '#182230').rotateX(0.6).translate(0, 0.62, 0.1);
+  const panel = colored(new THREE.BoxGeometry(1.9, 0.07, 1.15), '#33507a').rotateX(0.6).translate(0, 0.62, 0.1);
   const tank = colored(new THREE.CylinderGeometry(0.28, 0.28, 1.55, 8), '#f1f0ea').rotateZ(Math.PI / 2).translate(0, 1.2, -0.62);
   const legs = colored(new THREE.BoxGeometry(1.7, 0.9, 0.08), '#8d8a84').translate(0, 0.45, -0.62);
   const g = mergeGeometries([panel, tank, legs], false);
