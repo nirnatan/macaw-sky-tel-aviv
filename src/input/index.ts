@@ -3,6 +3,7 @@ import type { InputHooks } from './hooks';
 import { clamp } from './hooks';
 import { createGamepad } from './gamepad';
 import { createKeyboard } from './keyboard';
+import { createTilt } from './tilt';
 import { createTouchControls } from './touch';
 
 const MAX_FRAME = 0.1; // seconds, so a hidden tab does not jerk the smoothing
@@ -22,6 +23,7 @@ export function createInput(root: HTMLElement): Input {
   const keyboard = createKeyboard(hooks);
   const touch = createTouchControls(root, hooks);
   const gamepad = createGamepad(hooks);
+  const tilt = createTilt();
   let lastTime = performance.now();
 
   return {
@@ -36,12 +38,15 @@ export function createInput(root: HTMLElement): Input {
       state.cycleTime = false;
       state.toggleRain = false;
       state.roll = 0;
-      const sources = [keyboard.read(dt), touch.read(), gamepad.poll()];
+      const sources = [keyboard.read(dt), touch.read(), gamepad.poll(), tilt.read(dt)];
       state.steer = clamp(sources.reduce((sum, s) => sum + s.steer, 0), -1, 1);
       state.climb = clamp(sources.reduce((sum, s) => sum + s.climb, 0), -1, 1);
       state.flap = sources.some((s) => s.flap);
       state.boost = sources.some((s) => s.boost);
     },
     setTouchControlsVisible: touch.setVisible,
+    tiltSupported: tilt.supported,
+    enableTilt: tilt.enable,
+    recalibrateTilt: tilt.recalibrate,
   };
 }
