@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rain harness</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #223; font: 12px/1.4 system-ui, sans-serif; }
+      canvas { display: block; }
+      #panel { position: fixed; top: 8px; left: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-width: 92vw; }
+      #panel button { border: 0; border-radius: 6px; padding: 4px 8px; background: #ffffffcc; cursor: pointer; font: inherit; }
+      #panel button.on { background: #ffd35a; }
+      #panel label { background: #ffffffcc; border-radius: 6px; padding: 2px 7px; display: flex; gap: 5px; align-items: center; }
+      #panel input[type='range'] { width: 80px; }
+      #stats { position: fixed; bottom: 8px; left: 8px; background: #0009; color: #fff; padding: 4px 8px; border-radius: 6px; white-space: pre; font-family: ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <div id="panel"></div>
+    <div id="stats">loading…</div>
+    <script type="module" src="./rain.ts"></script>
+  </body>
+</html>
