@@ -87,7 +87,7 @@ vec3 rainbow(vec3 dir) {
   vec3 anti = -SUN_DIR;
   anti.y = -0.2079; // antisolar point pinned at -12 deg: the bow rises at noon and its apex (~30 deg) stays inside the chase frame at a low sun
   anti = normalize(anti);
-  float ang = degrees(acos(clamp(dot(dir, anti), -1.0, 1.0)));
+  float ang = degrees(acos(clamp(dot(dir, anti), -1.0, 1.0))) * 1.35; // drawn at ~31 deg instead of 42 so the whole arch fits the chase view
   float p = (ang - 40.4) / 2.0; // primary: violet inside, red outside
   float primary = smoothstep(0.0, 0.2, p) * (1.0 - smoothstep(0.8, 1.0, p));
   float s = (ang - 50.6) / 3.0; // secondary: reversed and faint

@@ -115,12 +115,15 @@ class Buf {
   bytes() { return new Uint8Array(this.a.buffer, 0, this.o); }
 }
 
+// A building mapped both as an outline and as building:part pieces would draw coplanar walls that z-fight; keep the parts.
+function dropOutlinesWithParts(recs) {
+  const inside = (ring, x, z) => { let c = false; for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) { const xi = ring[i], zi = ring[i + 1], xj = ring[j], zj = ring[j + 1]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
+  const partCenters = recs.filter((r) => r.isPart).map((r) => centroid(r.rings[0]));
+  return recs.filter((r) => r.isPart || !partCenters.some(([x, z]) => inside(r.rings[0], x, z)));
+}
+
 async function buildBuildings() {
   const els = await loadLayer('buildings');
-  const parts = els.filter((e) => e.tags?.['building:part']);
-  const partOf = new Set();
-  // Buildings described by parts render via parts only, so drop the outline when parts exist inside it.
-  for (const p of parts) if (p.bounds) partOf.add(`${p.bounds.minlat.toFixed(3)},${p.bounds.minlon.toFixed(3)}`);
   const recs = [];
   for (const el of els) {
     const tags = el.tags ?? {};
@@ -141,9 +144,10 @@ async function buildBuildings() {
       recs.push({ rings, height, minHeight: Math.min(minHeight, height - 1), kind, id: el.id, isPart: !!tags['building:part'] });
     }
   }
+  const kept = dropOutlinesWithParts(recs);
   const buf = new Buf();
-  buf.u32(recs.length);
-  for (const r of recs) {
+  buf.u32(kept.length);
+  for (const r of kept) {
     buf.u16(Math.round(r.height * 10));
     buf.u16(Math.round(Math.max(0, r.minHeight) * 10));
     buf.u8(BUILDING_KIND[r.kind]);
@@ -151,8 +155,8 @@ async function buildBuildings() {
     writeRings(buf, r.rings);
   }
   await writeFile(new URL('buildings.bin', OUT), buf.bytes());
-  console.log('buildings', recs.length, (buf.o / 1e6).toFixed(2) + 'MB');
-  return recs;
+  console.log('buildings', kept.length, `(dropped ${recs.length - kept.length} outlines drawn by their parts)`, (buf.o / 1e6).toFixed(2) + 'MB');
+  return kept;
 }
 
 const ROAD_KIND = {

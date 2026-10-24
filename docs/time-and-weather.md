@@ -1,6 +1,6 @@
 # Times of day and rain: design
 
-Status: planned 2026-10-24. Five scouts checked the draft against the code and a critic verified the decisions in three r186 source. The final interfaces are in `src/contracts.ts`; the decisions below supersede the draft where they differ.
+Status: shipped 2026-10-24 (planned, built by six parallel workstreams, verified in game by six verifiers, triaged, fixed and re-verified). Five scouts checked the draft against the code and a critic verified the decisions in three r186 source. The final interfaces are in `src/contracts.ts`; the decisions below supersede the draft where they differ.
 
 ## What the kids get
 
