@@ -422,7 +422,8 @@
   .mc-compass-text { overflow: hidden; }
   .mc-compass-text .mc-he { overflow: hidden; text-overflow: ellipsis; }
   .mc-hint .mc-en, .mc-compass-text .mc-en { display: none; }
-  .mc-hint, .mc-ui.is-touch .mc-hint { bottom: calc(max(calc(var(--ui) * 1), env(safe-area-inset-bottom)) + 4px); }
+  .mc-hint, .mc-ui.is-touch .mc-hint { top: calc(var(--pad-top) + var(--ui) * 8.6); bottom: auto; } /* bottom center is where the bird flies on a short screen */
+  .mc-hint.off { transform: translate(-50%, -12px); }
   .mc-ui.is-touch .mc-hint { width: max-content; max-width: calc(100% - 2 * (max(14px, env(safe-area-inset-right)) + var(--mc-touch-u) * 3.6 + 10px)); white-space: normal; }
   .mc-ui.is-touch .mc-minimap-wrap { top: calc(var(--pad-top) + max(var(--tap), var(--ui) * 3.6) + 8px); right: var(--pad-right); }
   @media (max-height: 340px) {
