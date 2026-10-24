@@ -1,16 +1,20 @@
 import * as THREE from 'three';
 import { fxMaterial } from './fx';
-import { instancedFrom, Parts } from './parts';
+import type { Mood } from './mood';
+import { instancedFrom, Parts, soak } from './parts';
 import { RING_RADIUS, type RingSpec } from './route';
 
 const POP_SECONDS = 0.7;
 const GOLD = '#ffc63a';
+const ROUGHNESS = 0.3;
+const EMISSIVE = 0.9;
 
 export interface RingView {
   readonly objects: THREE.Object3D[];
   /** Marks ring i popped at `time`; it swells, flashes, and fades away. */
   pop(i: number, time: number): void;
   update(time: number, rings: readonly { collected: boolean }[]): void;
+  applyLighting(m: Mood): void;
 }
 
 function ringGeometry(): THREE.BufferGeometry {
@@ -26,7 +30,7 @@ function ringGeometry(): THREE.BufferGeometry {
 
 /** MeshStandardMaterial with a per-instance (fade, glow) attribute. */
 function ringMaterial(): THREE.MeshStandardMaterial {
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.3, emissive: '#ff9a1a', emissiveIntensity: 0.9, transparent: true });
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: ROUGHNESS, emissive: '#ff9a1a', emissiveIntensity: EMISSIVE, transparent: true });
   mat.onBeforeCompile = (s) => {
     s.vertexShader = s.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aRing;\nvarying vec2 vRing;')
@@ -46,7 +50,7 @@ function haloMesh(count: number): { mesh: THREE.Mesh<THREE.InstancedBufferGeomet
   g.setAttribute('aCenter', center);
   g.setAttribute('aGlow', glow);
   const mat = fxMaterial({
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uBoost: { value: 1 } },
     vertexShader: /* glsl */ `
       attribute vec3 aCenter; attribute float aGlow;
       uniform float uTime;
@@ -63,12 +67,13 @@ function haloMesh(count: number): { mesh: THREE.Mesh<THREE.InstancedBufferGeomet
         vAlpha = min(aGlow, 1.0) * far * smoothstep(20.0, 120.0, dist) * (0.45 + emphasis * 0.15);
       }`,
     fragmentShader: /* glsl */ `
+      uniform float uBoost;
       varying vec2 vUv; varying float vAlpha;
       void main() {
         float d = length(vUv - 0.5) * 2.0;
         float core = exp(-d * d * 9.0);
         float rim = exp(-pow((d - 0.5) * 6.0, 2.0)) * 0.6;
-        gl_FragColor = vec4(vec3(1.0, 0.66, 0.18) * (core * 0.6 + rim) * vAlpha, 1.0);
+        gl_FragColor = vec4(vec3(1.0, 0.66, 0.18) * (core * 0.6 + rim) * vAlpha * uBoost, 1.0);
       }`,
   });
   const mesh = new THREE.Mesh(g, mat);
@@ -83,7 +88,8 @@ export function createRingView(specs: RingSpec[]): RingView {
   const fadeGlow = new THREE.InstancedBufferAttribute(new Float32Array(n * 2).fill(1), 2);
   fadeGlow.setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('aRing', fadeGlow);
-  const mesh = new THREE.InstancedMesh(geometry, ringMaterial(), n);
+  const material = ringMaterial();
+  const mesh = new THREE.InstancedMesh(geometry, material, n);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
 
@@ -97,6 +103,11 @@ export function createRingView(specs: RingSpec[]): RingView {
   return {
     objects: [mesh, halo.mesh],
     pop(i, time) { popAt[i] = time; },
+    applyLighting(m) {
+      material.emissiveIntensity = EMISSIVE * (1 + 0.9 * m.glow + 0.3 * m.gray);
+      soak(material, ROUGHNESS, m.wet);
+      halo.mesh.material.uniforms.uBoost.value = 1 + 1.4 * m.glow + 0.4 * m.gray;
+    },
     update(time, rings) {
       halo.mesh.material.uniforms.uTime.value = time;
       let last = -1;

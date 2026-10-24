@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { at, backlitFabric, Parts, seeded } from './parts';
+import type { Mood } from './mood';
+import { at, backlitFabric, Parts, seeded, soak } from './parts';
 
 const FLAG_COLORS = ['#ff595e', '#ffca3a', '#1982c4', '#8ac926', '#ffffff', '#ff924c', '#6a4c93', '#ff8fab'];
 const BALLOON_COLORS = ['#ff4f6d', '#ffd23f', '#4dd8ff', '#7dff6a', '#b77dff', '#ff9f1c'];
@@ -92,7 +93,10 @@ function addBunting(p: Parts, ring: number[], roof: number) {
 export interface SchoolDecor {
   readonly objects: THREE.Object3D[];
   update(time: number): void;
+  applyLighting(m: Mood): void;
 }
+
+const DECOR_ROUGHNESS = 0.7;
 
 export function createSchoolDecor(ring: number[], roof: number, stats: RoofStats, castShadow: boolean): SchoolDecor {
   const R = Math.min(stats.inscribed * 0.92, 12);
@@ -102,7 +106,8 @@ export function createSchoolDecor(ring: number[], roof: number, stats: RoofStats
   decor.add(flat(new THREE.CircleGeometry(R, 64)), '#24418f', at(cx, roof + 0.12, cz));
   decor.add(flat(new THREE.RingGeometry(R * 0.95, R * 0.99, 64)), '#ffffff', at(cx, roof + 0.14, cz));
   addBunting(decor, ring, roof);
-  const decorMesh = new THREE.Mesh(decor.build(), backlitFabric(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide }), 0.3));
+  const fabric = backlitFabric(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: DECOR_ROUGHNESS, side: THREE.DoubleSide }), 0.3);
+  const decorMesh = new THREE.Mesh(decor.build(), fabric.material);
   decorMesh.castShadow = castShadow;
   decorMesh.receiveShadow = true;
 
@@ -117,10 +122,16 @@ export function createSchoolDecor(ring: number[], roof: number, stats: RoofStats
   const glowMesh = new THREE.Mesh(glow.build(), glowMat);
 
   const balloons = createBalloons(ring, roof, stats.center);
+  let starBoost = 1;
   return {
     objects: [decorMesh, glowMesh, balloons.mesh],
+    applyLighting(m) {
+      fabric.setDaylight(m.daylight);
+      soak(fabric.material, DECOR_ROUGHNESS, m.wet);
+      starBoost = 1 + 0.8 * m.glow;
+    },
     update(time) {
-      glowMat.emissiveIntensity = 1.2 + 0.4 * Math.sin(time * 2.2);
+      glowMat.emissiveIntensity = (1.2 + 0.4 * Math.sin(time * 2.2)) * starBoost;
       balloons.time.value = time;
     },
   };

@@ -84,15 +84,31 @@ export function instancedFrom(base: THREE.BufferGeometry, count: number): THREE.
   return g;
 }
 
-/** Back faces glow softly with their own color, like sunlit fabric seen from underneath (shade sails, flags). */
-export function backlitFabric<T extends THREE.MeshStandardMaterial>(material: T, strength = 0.45): T {
+export interface Fabric<T extends THREE.MeshStandardMaterial> {
+  readonly material: T;
+  /** 0..1 how much sun shines through: 1 on a clear day, 0 at night. */
+  setDaylight(k: number): void;
+}
+
+/**
+ * Back faces glow softly with their own color, like sunlit fabric seen from underneath (shade sails, flags).
+ * The strength is a uniform, not a literal: materials share one program through the onBeforeCompile source text.
+ */
+export function backlitFabric<T extends THREE.MeshStandardMaterial>(material: T, strength: number): Fabric<T> {
+  const uBacklit = { value: strength };
   material.onBeforeCompile = (s) => {
-    s.fragmentShader = s.fragmentShader.replace(
-      '#include <emissivemap_fragment>',
-      `#include <emissivemap_fragment>\ntotalEmissiveRadiance += gl_FrontFacing ? vec3(0.0) : diffuseColor.rgb * ${strength.toFixed(2)};`,
-    );
+    s.uniforms.uBacklit = uBacklit;
+    s.fragmentShader = s.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uBacklit;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += gl_FrontFacing ? vec3(0.0) : diffuseColor.rgb * uBacklit;');
   };
-  return material;
+  return { material, setDaylight: (k) => { uBacklit.value = strength * k; } };
+}
+
+/** Rain-soaked look: a little darker and glossier as `wet` goes 0..1. */
+export function soak(material: THREE.MeshStandardMaterial, dryRoughness: number, wet: number) {
+  material.roughness = dryRoughness * (1 - 0.45 * wet);
+  material.color.setScalar(1 - 0.12 * wet);
 }
 
 /** Deterministic 0..1 pseudo-random sequence, so props look the same on every load. */

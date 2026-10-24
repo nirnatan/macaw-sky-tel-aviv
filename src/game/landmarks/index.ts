@@ -3,7 +3,9 @@ import type { CreateLandmarks, LandingSpot, TargetId } from '../../contracts';
 import { createAmbient } from './ambient';
 import { createBeacon, type Beacon } from './beacon';
 import { createCelebration } from './celebration';
+import { pointScale } from './fx';
 import { createGan, GAN_PAD_RADIUS, GAN_ROOF_CENTER, GAN_ROOF_RADIUS } from './gan';
+import { moodOf, type Mood } from './mood';
 import { createRingView } from './rings';
 import { buildRoute, passesThrough } from './route';
 import { createSchoolDecor, roofStats } from './school';
@@ -46,6 +48,7 @@ export const createLandmarks: CreateLandmarks = (data, { scene, quality }) => {
   group.add(...(schoolDecor?.objects ?? []), ...beacons.school.objects, ...beacons.gan.objects, ...ringView.objects, ...celebration.objects, ...ambient.objects);
 
   let time = 0;
+  const mood: Mood = { glow: 0, gray: 0, wet: 0, rain: 0, daylight: 1 };
   const viewer = new THREE.Vector3();
   const spotOf = (id: TargetId) => spots.find((s) => s.id === id)!;
 
@@ -67,15 +70,26 @@ export const createLandmarks: CreateLandmarks = (data, { scene, quality }) => {
     },
     setFound: (id) => beacons[id].setFound(time),
     burst: (id) => celebration.burst(spotOf(id).position, id === 'gan' ? 'heart' : 'star', time, viewer),
+    applyLighting(l) {
+      moodOf(l, mood);
+      beacons.school.applyLighting(mood);
+      beacons.gan.applyLighting(mood);
+      schoolDecor?.applyLighting(mood);
+      gan.applyLighting(mood);
+      ringView.applyLighting(mood);
+      ambient.applyLighting(mood);
+    },
     update(dt, camera, bird) {
       time += dt;
       camera.getWorldPosition(viewer);
+      const scale = pointScale(camera);
       beacons.school.update(dt, time, camera);
       beacons.gan.update(dt, time, camera);
       schoolDecor?.update(time);
+      gan.update(time, scale);
       ringView.update(time, rings);
       celebration.update(time, camera);
-      ambient.update(dt, time, bird);
+      ambient.update(dt, time, bird, scale);
     },
   };
 };
