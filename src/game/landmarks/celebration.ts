@@ -4,16 +4,17 @@ import { instancedFrom, seeded } from './parts';
 
 // Every particle is a closed-form function of time in the shader, so bursts cost nothing per frame on the CPU.
 const GRAVITY = -7.5;
+const OUTLINE_SPARKS = 110;
 const PALETTES = [
   ['#ffd23f', '#ff7a1a'], ['#ff4fb8', '#ffd1f0'], ['#4dd8ff', '#ffffff'], ['#7dff6a', '#fff27a'], ['#b77dff', '#ff9ad5'], ['#ff3b3b', '#ffd23f'],
 ].map((p) => p.map((c) => new THREE.Color(c)));
 const CONFETTI_COLORS = ['#ff4f6d', '#ffd23f', '#4dd8ff', '#7dff6a', '#b77dff', '#ff9f1c', '#ffffff'].map((c) => new THREE.Color(c));
 
-export type BurstShape = 'star' | 'heart';
+export type BurstShape = 'star' | 'heart' | 'house';
 
 export interface Celebration {
   readonly objects: THREE.Object3D[];
-  /** ~4 s show of rockets and confetti around `at`; the heart shape faces `viewer`. */
+  /** ~4 s show of rockets and confetti around `at`; heart and house shapes face `viewer`. */
   burst(at: THREE.Vector3, shape: BurstShape, time: number, viewer: THREE.Vector3): void;
   /** Small golden flash, used when a ring is collected. */
   pop(at: THREE.Vector3, time: number): void;
@@ -83,11 +84,32 @@ class Pool {
   }
 }
 
-function heartPoint(a: number): [number, number] {
+type Outline = (t: number) => [number, number]; // t in 0..1 around the outline, unit-sized
+
+const heartPoint: Outline = (t) => {
+  const a = t * Math.PI * 2;
   const x = 16 * Math.sin(a) ** 3;
   const y = 13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a);
   return [x / 16, y / 16];
+};
+
+function polygonOutline(corners: [number, number][]): Outline {
+  const edges = corners.map((a, i) => [a, corners[(i + 1) % corners.length]] as const);
+  const lengths = edges.map(([a, b]) => Math.hypot(b[0] - a[0], b[1] - a[1]));
+  const total = lengths.reduce((x, y) => x + y, 0);
+  return (t) => {
+    let d = t * total, i = 0;
+    while (d > lengths[i] && i < edges.length - 1) d -= lengths[i++];
+    const [a, b] = edges[i], k = d / lengths[i];
+    return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+  };
 }
+
+/** Shapes drawn by part of each shell's sparks; the rest fill a softer sphere. A star shell is all sphere. */
+const OUTLINES: Partial<Record<BurstShape, Outline>> = {
+  heart: heartPoint,
+  house: polygonOutline([[-0.7, -0.85], [0.7, -0.85], [0.7, 0.1], [0.95, 0.1], [0, 0.95], [-0.95, 0.1], [-0.7, 0.1]]),
+};
 
 export function createCelebration(particleBudget: number): Celebration {
   const rand = seeded(42);
@@ -156,17 +178,18 @@ export function createCelebration(particleBudget: number): Celebration {
       v.set((burstPos.x - launch.x) / e, vy, (burstPos.z - launch.z) / e);
       emit(i + j, launch, v, palette[1], explodeAt - rise + j * 0.025, rise - j * 0.025, 1.6 - j * 0.11, k);
     }
-    const count = shape === 'heart' ? 170 : 150;
+    const outline = OUTLINES[shape];
+    const count = outline ? 170 : 150;
     i = sparks.take(count);
     right.crossVectors(up, facing).normalize();
     for (let j = 0; j < count; j++) {
       const speed = 27 + rand() * 6;
-      if (shape === 'heart' && j < 110) {
-        const [hx, hy] = heartPoint((j / 110) * Math.PI * 2);
+      if (outline && j < OUTLINE_SPARKS) {
+        const [hx, hy] = outline(j / OUTLINE_SPARKS);
         v.copy(right).multiplyScalar(hx * speed).addScaledVector(up, hy * speed + 2);
       } else {
         const z = rand() * 2 - 1, a = rand() * Math.PI * 2, r = Math.sqrt(1 - z * z);
-        v.set(r * Math.cos(a), z, r * Math.sin(a)).multiplyScalar(speed * (shape === 'heart' ? 0.55 : 1));
+        v.set(r * Math.cos(a), z, r * Math.sin(a)).multiplyScalar(speed * (outline ? 0.55 : 1));
       }
       emit(i + j, burstPos, v, palette[j % 3 === 0 ? 1 : 0], explodeAt, 1.8 + rand() * 0.9, 3.2 + rand() * 1.6, 1.5);
     }

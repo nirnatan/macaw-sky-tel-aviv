@@ -26,8 +26,20 @@ export function loadRoundFont(): Promise<void> {
   return fontReady;
 }
 
-export interface SignStyle { nameHe: string; nameEn: string; accent: string; board: [top: string, bottom: string]; ink: string; icon: 'star' | 'heart' }
+export type SignIcon = 'star' | 'heart' | 'house';
+export interface SignStyle { nameHe: string; nameEn: string; color: string; icon: SignIcon }
 const FOUND_GREEN = '#2fbf5b';
+const INK = '#3b1f5c';
+
+interface Palette { accent: string; board: [top: string, bottom: string] }
+
+/** Frame, icons and board gradient, all derived from the place's color so every place reads as one family. */
+function paletteOf(color: string): Palette {
+  const hsl = { h: 0, s: 0, l: 0 };
+  new THREE.Color(color).getHSL(hsl, THREE.SRGBColorSpace);
+  const shade = (s: number, l: number) => `#${new THREE.Color().setHSL(hsl.h, s, THREE.MathUtils.clamp(l, 0, 0.92), THREE.SRGBColorSpace).getHexString(THREE.SRGBColorSpace)}`;
+  return { accent: shade(hsl.s * 0.95, hsl.l - 0.12), board: [shade(hsl.s, hsl.l + 0.16), shade(hsl.s, hsl.l + 0.04)] };
+}
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
@@ -51,14 +63,39 @@ function heart(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number)
   ctx.closePath();
 }
 
+function house(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.lineTo(cx + r * 1.05, cy - r * 0.05);
+  ctx.lineTo(cx + r * 0.75, cy - r * 0.05);
+  ctx.lineTo(cx + r * 0.75, cy + r * 0.85);
+  ctx.lineTo(cx - r * 0.75, cy + r * 0.85);
+  ctx.lineTo(cx - r * 0.75, cy - r * 0.05);
+  ctx.lineTo(cx - r * 1.05, cy - r * 0.05);
+  ctx.closePath();
+}
+
+const ICONS: Record<SignIcon, (ctx: CanvasRenderingContext2D, x: number, accent: string) => void> = {
+  star(ctx, x, accent) { star(ctx, x, 150, 50); ctx.fillStyle = accent; ctx.fill(); },
+  heart(ctx, x, accent) { heart(ctx, x, 158, 48); ctx.fillStyle = accent; ctx.fill(); },
+  house(ctx, x, accent) {
+    house(ctx, x, 150, 54);
+    ctx.fillStyle = accent;
+    ctx.fill();
+    heart(ctx, x, 172, 19);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  },
+};
+
 function fitText(ctx: CanvasRenderingContext2D, text: string, size: number, maxWidth: number) {
   ctx.font = `${size}px ${FONT_STACK}`;
   const w = ctx.measureText(text).width;
   if (w > maxWidth) ctx.font = `${Math.floor((size * maxWidth) / w)}px ${FONT_STACK}`;
 }
 
-function draw(ctx: CanvasRenderingContext2D, s: SignStyle, found: boolean) {
-  const accent = found ? FOUND_GREEN : s.accent;
+function draw(ctx: CanvasRenderingContext2D, s: SignStyle, palette: Palette, found: boolean) {
+  const accent = found ? FOUND_GREEN : palette.accent;
   ctx.clearRect(0, 0, W, H);
 
   ctx.fillStyle = accent; // pointer under the board
@@ -70,8 +107,8 @@ function draw(ctx: CanvasRenderingContext2D, s: SignStyle, found: boolean) {
   ctx.fillStyle = accent;
   ctx.fill();
   const g = ctx.createLinearGradient(0, 40, 0, 410);
-  g.addColorStop(0, found ? '#b9f2c6' : s.board[0]);
-  g.addColorStop(1, found ? '#5ccf7c' : s.board[1]);
+  g.addColorStop(0, found ? '#b9f2c6' : palette.board[0]);
+  g.addColorStop(1, found ? '#5ccf7c' : palette.board[1]);
   roundRect(ctx, 44, 44, W - 88, 362, 50);
   ctx.fillStyle = g;
   ctx.fill();
@@ -80,21 +117,16 @@ function draw(ctx: CanvasRenderingContext2D, s: SignStyle, found: boolean) {
   roundRect(ctx, 34, 34, W - 68, 382, 58);
   ctx.stroke();
 
-  ctx.fillStyle = accent;
-  for (const x of found ? [110] : [110, W - 110]) {
-    if (s.icon === 'star') star(ctx, x, 150, 50); else heart(ctx, x, 158, 48);
-    ctx.fill();
-  }
+  for (const x of found ? [110] : [110, W - 110]) ICONS[s.icon](ctx, x, accent);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.direction = 'rtl';
-  ctx.fillStyle = s.ink;
+  ctx.fillStyle = INK;
   fitText(ctx, s.nameHe, 160, 660);
   ctx.fillText(s.nameHe, W / 2, 165);
 
   ctx.direction = 'ltr';
-  ctx.fillStyle = s.ink;
   fitText(ctx, s.nameEn, 92, 860);
   ctx.fillText(s.nameEn, W / 2, 330);
 
@@ -157,8 +189,9 @@ export function createSign(style: SignStyle): Sign {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
+  const palette = paletteOf(style.color);
   let found = false;
-  const redraw = () => { draw(ctx, style, found); texture.needsUpdate = true; };
+  const redraw = () => { draw(ctx, style, palette, found); texture.needsUpdate = true; };
   redraw();
   void loadRoundFont().then(redraw);
 
@@ -168,7 +201,7 @@ export function createSign(style: SignStyle): Sign {
   mesh.add(halo);
   const haloColor = () => {
     const c = halo.material.uniforms.uColor.value as THREE.Color;
-    c.set(found ? FOUND_GREEN : style.accent);
+    c.set(found ? FOUND_GREEN : palette.accent);
     c.multiplyScalar(HALO_LUMINANCE / luminance(c));
   };
   haloColor();

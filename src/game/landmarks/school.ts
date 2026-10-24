@@ -1,54 +1,10 @@
 import * as THREE from 'three';
-import type { Mood } from './mood';
 import { at, backlitFabric, Parts, seeded, soak } from './parts';
+import type { Roof } from './roof';
+import type { Decor } from './styles';
 
 const FLAG_COLORS = ['#ff595e', '#ffca3a', '#1982c4', '#8ac926', '#ffffff', '#ff924c', '#6a4c93', '#ff8fab'];
 const BALLOON_COLORS = ['#ff4f6d', '#ffd23f', '#4dd8ff', '#7dff6a', '#b77dff', '#ff9f1c'];
-
-export interface RoofStats {
-  center: THREE.Vector2; // point farthest from every edge
-  inscribed: number; // radius of the largest circle inside the roof around center
-  coverRadius: number; // circle around center that holds ~75% of the roof area
-}
-
-function inside(ring: number[], x: number, z: number): boolean {
-  let c = false;
-  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
-    const xi = ring[i], zi = ring[i + 1], xj = ring[j], zj = ring[j + 1];
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
-  }
-  return c;
-}
-
-function edgeDistance(ring: number[], x: number, z: number): number {
-  let best = Infinity;
-  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
-    const ax = ring[j], az = ring[j + 1], dx = ring[i] - ax, dz = ring[i + 1] - az;
-    const t = THREE.MathUtils.clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz), 0, 1);
-    best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z));
-  }
-  return best;
-}
-
-export function roofStats(ring: number[]): RoofStats {
-  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  for (let i = 0; i < ring.length; i += 2) {
-    x0 = Math.min(x0, ring[i]); x1 = Math.max(x1, ring[i]);
-    z0 = Math.min(z0, ring[i + 1]); z1 = Math.max(z1, ring[i + 1]);
-  }
-  const step = 0.5, samples: [number, number][] = [];
-  let center = new THREE.Vector2(), inscribed = 0;
-  for (let x = x0; x <= x1; x += step) {
-    for (let z = z0; z <= z1; z += step) {
-      if (!inside(ring, x, z)) continue;
-      samples.push([x, z]);
-      const d = edgeDistance(ring, x, z);
-      if (d > inscribed) { inscribed = d; center = new THREE.Vector2(x, z); }
-    }
-  }
-  const dists = samples.map(([x, z]) => Math.hypot(x - center.x, z - center.y)).sort((a, b) => a - b);
-  return { center, inscribed, coverRadius: dists[Math.floor(dists.length * 0.75)] ?? inscribed };
-}
 
 function star(outer: number, inner: number): THREE.Shape {
   const s = new THREE.Shape();
@@ -90,17 +46,10 @@ function addBunting(p: Parts, ring: number[], roof: number) {
   }
 }
 
-export interface SchoolDecor {
-  readonly objects: THREE.Object3D[];
-  update(time: number): void;
-  applyLighting(m: Mood): void;
-}
-
 const DECOR_ROUGHNESS = 0.7;
 
-export function createSchoolDecor(ring: number[], roof: number, stats: RoofStats, castShadow: boolean): SchoolDecor {
-  const R = Math.min(stats.inscribed * 0.92, 12);
-  const { x: cx, y: cz } = stats.center;
+export function createSchoolDecor({ ring, height: roof, center, padRadius: R }: Roof, castShadow: boolean): Decor {
+  const { x: cx, y: cz } = center;
 
   const decor = new Parts();
   decor.add(flat(new THREE.CircleGeometry(R, 64)), '#24418f', at(cx, roof + 0.12, cz));
@@ -121,7 +70,7 @@ export function createSchoolDecor(ring: number[], roof: number, stats: RoofStats
   const glowMat = new THREE.MeshStandardMaterial({ color: '#ffcf40', emissive: '#ffb300', emissiveIntensity: 1.4, metalness: 0.3, roughness: 0.35 });
   const glowMesh = new THREE.Mesh(glow.build(), glowMat);
 
-  const balloons = createBalloons(ring, roof, stats.center);
+  const balloons = createBalloons(ring, roof, center);
   let starBoost = 1;
   return {
     objects: [decorMesh, glowMesh, balloons.mesh],
