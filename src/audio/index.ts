@@ -1,11 +1,10 @@
-import type { AudioEngine, Species } from '../contracts';
-import { createAmbience, type AmbienceParams } from './ambience';
+import type { AudioEngine, AudioMix, Species } from '../contracts';
+import { createAmbience } from './ambience';
 import { createMusic } from './music';
-import { makePinkNoise, makeReverbImpulse, type Rig } from './rig';
+import { makePinkNoise, makeReverbImpulse, nightAmount, UPDATE_INTERVAL, type Rig } from './rig';
 import * as voices from './voices';
 
 const MUSIC_LEVEL = 0.26;
-const UPDATE_INTERVAL = 0.05; // seconds between ambience retunes
 const RING_COMBO_WINDOW = 2.5; // seconds
 
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
@@ -72,12 +71,13 @@ export function createAudio(): AudioEngine {
 
   return {
     unlock,
-    update(p: AmbienceParams) {
+    update(p: AudioMix) {
       if (!graph) return;
       const now = graph.ctx.currentTime;
       if (now - lastUpdate < UPDATE_INTERVAL) return;
       lastUpdate = now;
       graph.ambience.update(p);
+      graph.music.setMood(nightAmount(p.night));
     },
     flap: (strength) => play((rig) => voices.flap(rig, Math.min(1, Math.max(0, strength)))),
     squawk: (species: Species) => play((rig) => voices.squawk(rig, species)),

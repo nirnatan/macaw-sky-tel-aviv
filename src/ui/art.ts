@@ -1,4 +1,4 @@
-import type { Species } from '../contracts';
+import type { Species, TimeOfDay } from '../contracts';
 
 interface Palette {
   fan: [string, string, string][]; // per feather: base, mid, tip
@@ -84,6 +84,45 @@ export function targetIcon(id: 'school' | 'gan'): string {
     <path d="M11.500 29.500V35M28.500 29.500V35" stroke="#3d7a5a" stroke-width="1.500"/>
   </svg>`;
 }
+
+const sunRays = (cx: number, cy: number, from: number, to: number, angles: number[], color: string) =>
+  angles.map((a) => `<path d="M${cx} ${cy - from}v${from - to}" stroke="${color}" stroke-width="2.600" stroke-linecap="round" transform="rotate(${a} ${cx} ${cy})"/>`).join('');
+
+const FULL_CIRCLE = Array.from({ length: 8 }, (_, i) => i * 45);
+const UPPER_ARC = [-72, -48, -24, 0, 24, 48, 72];
+
+const sky = (id: string, stops: [number, string][]) =>
+  `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">${stops.map(([at, color]) => `<stop offset="${at}" stop-color="${color}"/>`).join('')}</linearGradient>`;
+
+/** Round sky-in-a-circle icon for a time of day. Gradient ids are global in the document, so each icon may be built once. */
+export function timeIcon(time: TimeOfDay): string {
+  const id = `tod-${time}`;
+  const frame = (defs: string, body: string) => `<svg viewBox="0 0 48 48" aria-hidden="true"><defs>${defs}<clipPath id="${id}-clip"><circle cx="24" cy="24" r="23"/></clipPath></defs><g clip-path="url(#${id}-clip)">${body}</g><circle cx="24" cy="24" r="22.500" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="3"/></svg>`;
+  switch (time) {
+    case 'sunrise':
+      return frame(sky(id, [[0, '#8fb6ff'], [.55, '#ffc2a8'], [1, '#ffe49a']]), `<rect width="48" height="48" fill="url(#${id})"/>
+        ${sunRays(24, 33, 17, 12, UPPER_ARC, '#ffe27a')}
+        <circle cx="24" cy="33" r="9.500" fill="#ffd23a"/>
+        <path d="M0 36c8-5 14-5 20-1 6-4 14-5 28 1v12H0z" fill="#7cc26a"/><path d="M0 41c10-4 20-3 26 0 7-3 14-3 22 0v7H0z" fill="#58a85a"/>`);
+    case 'noon':
+      return frame(sky(id, [[0, '#3f93f0'], [1, '#a6dcff']]), `<rect width="48" height="48" fill="url(#${id})"/>
+        ${sunRays(24, 24, 20, 14.500, FULL_CIRCLE, '#fff1a6')}<circle cx="24" cy="24" r="10" fill="#ffd23a"/><circle cx="21" cy="21" r="4" fill="#fff3b0" opacity=".7"/>`);
+    case 'sunset':
+      return frame(sky(id, [[0, '#7a4aa8'], [.5, '#ff7a6b'], [1, '#ffbe5c']]), `<rect width="48" height="48" fill="url(#${id})"/>
+        <circle cx="24" cy="32" r="10" fill="#ffe08a"/>
+        <rect y="33" width="48" height="15" fill="#3b3f8f"/><path d="M16 36h16M19 40h10M22 44h4" stroke="#ffc46b" stroke-width="2.200" stroke-linecap="round"/>`);
+    case 'night':
+      return frame(`${sky(id, [[0, '#14173f'], [1, '#43358a']])}<mask id="${id}-bite"><rect width="48" height="48" fill="#fff"/><circle cx="29.500" cy="19" r="9" fill="#000"/></mask>`, `<rect width="48" height="48" fill="url(#${id})"/>
+        <circle cx="22" cy="25" r="11" fill="#fff0a8" mask="url(#${id}-bite)"/>
+        <path d="M35 28l1.200 3 3 1.200-3 1.200L35 36.500l-1.200-3.100-3-1.200 3-1.200zM12 11l.9 2.200 2.200.9-2.200.9L12 17.200l-.9-2.200-2.200-.9 2.200-.9z" fill="#fff"/><circle cx="38" cy="14" r="1.400" fill="#fff"/><circle cx="9" cy="32" r="1.200" fill="#fff"/>`);
+  }
+}
+
+export const rainIcon = `<svg viewBox="0 0 48 48" aria-hidden="true">
+  <g fill="#f4f8ff" stroke="#8aa2c8" stroke-width="1.600"><circle cx="16" cy="25" r="7.500"/><circle cx="25.500" cy="18.500" r="10"/><circle cx="34" cy="25.500" r="6.500"/></g>
+  <rect x="14" y="22" width="22" height="10" rx="5" fill="#f4f8ff"/><path d="M15 32h20" stroke="#8aa2c8" stroke-width="1.600" stroke-linecap="round" opacity=".6"/>
+  <path d="M15 37l-2.500 6M24 37l-2.500 6M33 37l-2.500 6" stroke="#3f93f0" stroke-width="3.200" stroke-linecap="round"/>
+</svg>`;
 
 export const pauseIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.500"/><rect x="14" y="5" width="4" height="14" rx="1.500"/></svg>';
 export const ringIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="7" ry="9" fill="none" stroke="#ffc928" stroke-width="3.500"/><ellipse cx="12" cy="12" rx="7" ry="9" fill="none" stroke="#fff3b0" stroke-width="1.200" transform="translate(-.8 -.8)"/></svg>';

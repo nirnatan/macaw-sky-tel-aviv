@@ -7,6 +7,9 @@ export interface Rig {
   duckMusic(seconds: number): void;
 }
 
+/** Seconds between ambience retunes; the random events in rain and critters are tuned per window of this size. */
+export const UPDATE_INTERVAL = 0.05;
+
 export const midiToHz = (note: number) => 440 * 2 ** ((note - 69) / 12);
 export const random = (min: number, max: number) => min + Math.random() * (max - min);
 export const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -14,6 +17,18 @@ export const smoothstep = (edge0: number, edge1: number, x: number) => {
   const t = clamp01((x - edge0) / (edge1 - edge0));
   return t * t * (3 - 2 * t);
 };
+
+/** 0 through sunset and sunrise (preset night 0.15 and 0.05), 1 at full night: gates night-only sounds. */
+export const nightAmount = (night: number) => smoothstep(0.3, 0.9, night);
+
+/** A looping noise source at a random offset, so layers built from the same buffer do not phase together. */
+export function loopingNoise(rig: Rig): AudioBufferSourceNode {
+  const source = rig.ctx.createBufferSource();
+  source.buffer = rig.noise;
+  source.loop = true;
+  source.start(0, Math.random() * rig.noise.duration);
+  return source;
+}
 
 export function makePinkNoise(ctx: BaseAudioContext, seconds: number): AudioBuffer {
   const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);

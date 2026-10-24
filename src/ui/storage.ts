@@ -1,4 +1,4 @@
-import type { PlayerName, Quality, Settings, Species, StartChoice } from '../contracts';
+import { TIMES, type PlayerName, type Quality, type Settings, type Species, type StartChoice, type TimeOfDay } from '../contracts';
 
 const KEY = 'macaw-sky-tlv:v1';
 
@@ -6,7 +6,7 @@ export interface Saved { choice: StartChoice; settings: Settings }
 
 const DEFAULTS: Saved = {
   choice: { player: 'Amit', species: 'blueGold' },
-  settings: { muted: false, music: true, quality: 'auto' },
+  settings: { muted: false, music: true, quality: 'auto', time: 'sunset', rain: false },
 };
 
 const isOneOf = <T extends string>(options: readonly T[], v: unknown): v is T => options.includes(v as T);
@@ -23,6 +23,8 @@ export function loadSaved(): Saved {
         muted: typeof raw?.settings?.muted === 'boolean' ? raw.settings.muted : DEFAULTS.settings.muted,
         music: typeof raw?.settings?.music === 'boolean' ? raw.settings.music : DEFAULTS.settings.music,
         quality: isOneOf<Quality | 'auto'>(['auto', 'low', 'medium', 'high'], raw?.settings?.quality) ? raw!.settings!.quality! : DEFAULTS.settings.quality,
+        time: isOneOf<TimeOfDay>(TIMES, raw?.settings?.time) ? raw!.settings!.time! : DEFAULTS.settings.time,
+        rain: typeof raw?.settings?.rain === 'boolean' ? raw.settings.rain : DEFAULTS.settings.rain,
       },
     };
   } catch {
