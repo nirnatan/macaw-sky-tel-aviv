@@ -265,6 +265,7 @@
   .mc-seg button { min-height: 44px; padding-block: calc(var(--ui) * .3); }
   .mc-time-btn { min-width: 44px; min-height: 44px; justify-content: center; } /* finger-sized for young kids even with the labels hidden */
   .mc-hint .mc-en, .mc-compass-text .mc-en { display: none; }
+  .mc-hint, .mc-ui.is-touch .mc-hint { bottom: calc(max(calc(var(--ui) * 1), env(safe-area-inset-bottom)) + 14px); } /* clear of the map credit line */
   .mc-badge .mc-name small { display: none; }
 }
 @media (orientation: portrait) {
