@@ -7,12 +7,14 @@ import { N8AOPostPass } from 'n8ao';
 import type { Tier } from './quality';
 
 const gradeShader = /* glsl */ `
+uniform vec3 shadowTint;
+uniform vec3 highlightTint;
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
   vec3 c = inputColor.rgb;
   float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(vec3(luma), c, 1.18);
   c = mix(c, c * c * (3.0 - 2.0 * c), 0.25);
-  c *= mix(vec3(0.95, 0.97, 1.06), vec3(1.05, 1.0, 0.9), smoothstep(0.02, 0.5, luma));
+  c *= mix(shadowTint, highlightTint, smoothstep(0.02, 0.5, luma));
   float r = length((uv - 0.5) * vec2(aspect, 1.0));
   c *= mix(0.72, 1.0, smoothstep(0.95, 0.3, r));
   outputColor = vec4(max(c, 0.0), inputColor.a);
@@ -45,7 +47,15 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 }`;
 
 class GradeEffect extends Effect {
-  constructor() { super('GradeEffect', gradeShader); }
+  constructor() {
+    super('GradeEffect', gradeShader, {
+      uniforms: new Map([['shadowTint', new THREE.Uniform(new THREE.Color(1, 1, 1))], ['highlightTint', new THREE.Uniform(new THREE.Color(1, 1, 1))]]),
+    });
+  }
+  setTints(shadow: THREE.Color, highlight: THREE.Color) {
+    (this.uniforms.get('shadowTint')!.value as THREE.Color).copy(shadow);
+    (this.uniforms.get('highlightTint')!.value as THREE.Color).copy(highlight);
+  }
 }
 
 class SpeedEffect extends Effect {
@@ -59,20 +69,21 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
   composer.addPass(new RenderPass(scene, camera));
 
+  let ao: N8AOPostPass | null = null;
   if (tier.ao) {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-    const ao = new N8AOPostPass(scene, camera, size.x, size.y);
+    ao = new N8AOPostPass(scene, camera, size.x, size.y);
     ao.setQualityMode(tier.ao.mode);
     Object.assign(ao.configuration, { aoRadius: 8, distanceFalloff: 1, intensity: 4, halfRes: tier.ao.halfRes, depthAwareUpsampling: true });
-    ao.configuration.color.set(0x1a0d08);
     composer.addPass(ao);
   }
 
   const bloom = new BloomEffect({
     blendFunction: BlendFunction.ADD, mipmapBlur: true, levels: tier.bloomLevels,
-    luminanceThreshold: 1.1, luminanceSmoothing: 0.4, intensity: 0.4, radius: 0.6,
+    luminanceThreshold: 1.1, luminanceSmoothing: 0.4, intensity: 0.4, radius: 0.6, // the threshold is fixed for every time of day; night glows target 1.5+
   });
-  composer.addPass(new EffectPass(camera, bloom, new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }), new GradeEffect()));
+  const grade = new GradeEffect();
+  composer.addPass(new EffectPass(camera, bloom, new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }), grade));
 
   const speed = new SpeedEffect();
   const speedPass = new EffectPass(camera, speed);
@@ -90,5 +101,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
       speed.amount = amount;
       speedPass.enabled = amount > 0.005;
     },
+    setGrade(shadow: THREE.Color, highlight: THREE.Color) { grade.setTints(shadow, highlight); },
+    setAoColor(c: THREE.Color) { ao?.configuration.color.copy(c); },
   };
 }
