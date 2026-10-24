@@ -12,7 +12,7 @@ import { buildTrees } from './trees';
 
 const CHUNK = 900;
 /** Per-tier knobs; everything else stays identical so the city reads the same on every device. The creation tier's
- *  densities also decide how many trees, rooftop units and fringe boxes exist, so a later upgrade cannot exceed them. */
+ *  densities also decide how many rooftop units and fringe boxes exist, so a later upgrade cannot exceed them. */
 const QUALITY: Record<Quality, { treeDensity: number; treeRange: number; clutter: number; clutterRange: number; fringe: number; lampMinHw: number }> = {
   low: { treeDensity: 0.35, treeRange: 1000, clutter: 0.35, clutterRange: 450, fringe: 0.4, lampMinHw: 5.5 }, // arterials, ~9k lamps
   medium: { treeDensity: 0.65, treeRange: 1600, clutter: 0.7, clutterRange: 700, fringe: 0.7, lampMinHw: 3.9 }, // + tertiary, ~17k
@@ -37,7 +37,7 @@ export const createCity: CreateCity = (data, opts): City => {
   const buildings = buildBuildings(data, grid, uniforms, built.clutter);
   const physics = new CityPhysics(data, buildings.footprints);
   const flats = buildFlats(data, grid, uniforms);
-  const trees = buildTrees(data, grid, physics, built.treeDensity);
+  const trees = buildTrees(data, grid, physics);
   const fringe = buildFringe(data, built.fringe);
   const lamps = buildLamps(flats.lampStations, uniforms);
 

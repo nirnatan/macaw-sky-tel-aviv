@@ -298,6 +298,15 @@ if (runs > 0) {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 }
 result.programs.afterRuns = await programs();
+if (env.SPOTS === "1") { // fly past every special place: shadow-depth variants depend on which casters share the shadow box
+  result.programs.spots = {};
+  const spots = await page.evaluate(() => window.game.landmarks.spots.map((s) => [s.id, s.position.x, s.position.y, s.position.z]));
+  for (const [id, x, y, z] of spots) {
+    await page.evaluate(([x, y, z]) => { const p = window.game.player; p.position.set(x - 30, y + 25, z + 30); p.yaw = 0.8; p.speed = 10; }, [x, y, z]);
+    await page.waitForTimeout(1500);
+    result.programs.spots[id] = await programs();
+  }
+}
 if (env.MEMORY !== '0') {
   for (const r of ratios) {
     await setRatio(r);
