@@ -49,7 +49,7 @@ export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUn
   const footprints: Footprint[] = [];
   const rand = rng(7);
 
-  for (const b of data.buildings) {
+  for (const [index, b] of data.buildings.entries()) {
     const h = buildingHeight(b);
     const outer = b.rings[0];
     const area = ringArea(outer);
@@ -62,9 +62,11 @@ export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUn
     const roofColor = scale(style.roof, 0.92 + hash01(b.seed * 1000 + 2) * 0.14);
     footprints.push({ rings: b.rings, height: h, minHeight: b.minHeight });
 
+    const wallInset = 0.005 + (index % 16) * 0.004; // outline edges shared with a part or a neighbour must never give coplanar walls
     for (const ring of b.rings) {
-      walls(w, ring, b.minHeight, h + PARAPET, wallColor, b.seed, style.wall, h);
-      bevel(w, ring, insetRing(ring, PARAPET_INSET), h, wallColor, b.seed);
+      const wallRing = insetRing(ring, wallInset);
+      walls(w, wallRing, b.minHeight, h + PARAPET, wallColor, b.seed, style.wall, h);
+      bevel(w, wallRing, insetRing(ring, PARAPET_INSET), h, wallColor, b.seed);
     }
     slab(w, b.rings, h, roofColor, b.seed, style.roofType);
 
