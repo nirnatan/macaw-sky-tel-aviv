@@ -85,7 +85,7 @@ vec3 spectrum(float x) { // 0 red, 0.15 orange, 0.25 yellow, 0.5 green, 0.75 blu
 
 vec3 rainbow(vec3 dir) {
   vec3 anti = -SUN_DIR;
-  anti.y = max(anti.y, -0.2079); // antisolar point at least -12 deg, so a bow still rises at noon
+  anti.y = -0.2079; // antisolar point pinned at -12 deg: the bow rises at noon and its apex (~30 deg) stays inside the chase frame at a low sun
   anti = normalize(anti);
   float ang = degrees(acos(clamp(dot(dir, anti), -1.0, 1.0)));
   float p = (ang - 40.4) / 2.0; // primary: violet inside, red outside
