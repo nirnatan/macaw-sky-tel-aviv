@@ -277,7 +277,7 @@ async function boot() {
     const L = env.lighting;
     city.applyLighting(L);
     landmarks.applyLighting(L);
-    macaw.applyLighting(L);
+    macaw.applyLighting(L, { menu: phase === 'menu' });
     const heroNight = THREE.MathUtils.smoothstep(L.night, 0.3, 0.9); // the sunset row (0.15) keeps today's exact 3 / 7 / warm
     const closeUp = phase === 'menu' ? heroNight : 0; // the menu sand is a metre under the light and must stay moonlit; in flight nothing is that close
     heroLight.intensity = THREE.MathUtils.lerp(3, 3.5, heroNight) * THREE.MathUtils.lerp(1, 0.15, closeUp);

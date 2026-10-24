@@ -113,8 +113,9 @@ export interface Macaw {
   update(dt: number, input: MacawAnimInput): void;
   /** One-shot gestures. */
   squawk(): void; // beak opens, head bobs
-  /** Per frame: night plumage lift and cool fresnel rim; wet plumage and keratin. Uniforms and material scalars only. */
-  applyLighting(l: Lighting): void;
+  /** Per frame: night plumage lift and cool fresnel rim; wet plumage and keratin. Uniforms and material scalars only.
+   *  `menu` adds a fill on the bird alone, so the start-screen close-up reads whatever the key light does. */
+  applyLighting(l: Lighting, opts?: { menu?: boolean }): void;
   dispose(): void;
 }
 export type CreateMacaw = (species: Species) => Macaw;

@@ -148,11 +148,13 @@ class MacawImpl implements Macaw {
     this.gestures.startSquawk();
   }
 
-  applyLighting(l: Lighting): void {
+  applyLighting(l: Lighting, opts?: { menu?: boolean }): void {
     const s = this.rig.surfaces;
     const w = l.wetness;
-    s.uniforms.uLift.value = lerp(0.16, 0.28, THREE.MathUtils.smoothstep(l.night, 0.3, 0.9)); // the sunset row (0.15) keeps today's 0.16
-    s.uniforms.uRim.value = lerp(0, 0.35, THREE.MathUtils.smoothstep(l.night, 0.3, 1));
+    const night = THREE.MathUtils.smoothstep(l.night, 0.3, 0.9); // the sunset row (0.15) keeps today's 0.16 lift in flight
+    const menuFill = opts?.menu ? 0.3 * (1 - 0.5 * night) : 0; // the start-screen close-up sits in a tower's shadow at sunrise and under a high sun at noon
+    s.uniforms.uLift.value = lerp(0.16, 0.28, night) + menuFill + 0.06 * l.overcast;
+    s.uniforms.uRim.value = lerp(0, 0.35, THREE.MathUtils.smoothstep(l.night, 0.3, 1)) + (menuFill > 0 ? 0.15 : 0);
     s.uniforms.uWet.value = w;
     s.plumage.roughness = lerp(0.72, 0.5, w);
     s.plumage.sheen = lerp(0.7, 0.85, w); // never reaches 0: sheen is part of the program key
