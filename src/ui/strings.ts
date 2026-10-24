@@ -58,11 +58,11 @@ export const TIME_TOASTS: Record<TimeOfDay, Bilingual> = {
   sunrise: { he: 'בוקר טוב! זריחה', en: 'Good morning! Sunrise' },
   noon: { he: 'צהריים בשמש!', en: 'Sunny noon!' },
   sunset: { he: 'שקיעה זהובה', en: 'Golden sunset' },
-  night: { he: 'לילה טוב! כוכבים', en: 'Good night! Stars' },
+  night: { he: 'לילה! תראו את הכוכבים', en: 'Night time! Look at the stars' },
 };
 
 export const RAIN_TOASTS = {
-  on: { he: 'יורד גשם!', en: 'It is raining!' },
+  on: { he: 'יורד גשם!', en: "It's raining!" },
   off: { he: 'הגשם נגמר', en: 'The rain stopped' },
   offRainbow: { he: 'הגשם נגמר. חפש קשת בענן!', en: 'Rain stopped. Find a rainbow!' },
 } satisfies Record<string, Bilingual>;
