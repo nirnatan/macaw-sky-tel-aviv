@@ -48,6 +48,8 @@ export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUn
   const acMatrices: number[][] = Array.from({ length: grid.count }, () => []);
   const footprints: Footprint[] = [];
   const rand = rng(7);
+  const ringKey = (r: ArrayLike<number>) => `${r[0]},${r[1]},${r.length}`;
+  const placeRoofs = new Set(Object.values(data.targets).flatMap((t) => (t.building ? [ringKey(t.building.ring)] : [])));
 
   for (const [index, b] of data.buildings.entries()) {
     const h = buildingHeight(b);
@@ -70,7 +72,7 @@ export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUn
     }
     slab(w, b.rings, h, roofColor, b.seed, style.roofType);
 
-    const flatRoof = b.kind !== 'tower' && b.kind !== 'religious';
+    const flatRoof = b.kind !== 'tower' && b.kind !== 'religious' && !placeRoofs.has(ringKey(outer)); // special places keep their roofs clear for the landing pad
     if (flatRoof && area > 140 && h > 8 && b.minHeight === 0) {
       const spot = samplePointsInPolygon(b.rings, 1, 2.4, rand);
       if (spot.length) footprints.push(roofBox(w, spot[0], spot[1], h, longestEdgeAngle(outer), wallColor, roofColor, b.seed));

@@ -150,6 +150,15 @@ async function boot() {
     return best;
   }
 
+  function nearestUnfoundSpot(within: number) {
+    let best: (typeof landmarks.spots)[number] | null = null, bestD = within;
+    for (const s of landmarks.spots) {
+      const d = Math.hypot(s.position.x - player.position.x, s.position.z - player.position.z);
+      if (!found.has(s.id) && d < bestD) { best = s; bestD = d; }
+    }
+    return best;
+  }
+
   function checkTargets() {
     for (const spot of landmarks.spots) {
       if (found.has(spot.id)) continue;
@@ -210,13 +219,29 @@ async function boot() {
     rain.update(0, allOn, camera);
     const linearTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }); // the composer renders into linear half-float, so compile those variants
     renderer.setRenderTarget(linearTarget);
+    // Far city chunks start hidden by distance, and some casters only exist there, so show and un-cull everything once.
+    const culled: THREE.Object3D[] = [], hidden: THREE.Object3D[] = [];
+    scene.traverse((o) => {
+      if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); }
+      if (!o.visible) { o.visible = true; hidden.push(o); }
+    });
     await renderer.compileAsync(scene, camera);
     // compileAsync never draws, so the shadow-depth variants (double-sided and instanced casters) and every program's
-    // first-use driver work would land on the first gameplay frame that needs them. One all-on frame with nothing culled pays for them here.
-    const culled: THREE.Object3D[] = [];
-    scene.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); } });
+    // first-use driver work would land on the first gameplay frame that needs them. One all-on frame pays for them here.
     renderer.render(scene, camera);
     for (const o of culled) o.frustumCulled = true;
+    for (const o of hidden) o.visible = false;
+    // Some variants depend on where the shadow box and the LOD sit, so render one frame at every special place too.
+    const home = camera.position.clone();
+    for (const spot of landmarks.spots) {
+      camera.position.set(spot.position.x + 40, spot.position.y + 30, spot.position.z + 40);
+      camera.lookAt(spot.position);
+      env.update(0, spot.position);
+      city.update(camera);
+      landmarks.update(0, camera, spot.position);
+      renderer.render(scene, camera);
+    }
+    camera.position.copy(home);
     renderer.setRenderTarget(null);
     linearTarget.dispose();
     for (const b of birds) if (b !== macaw) b.object.removeFromParent();
@@ -246,8 +271,7 @@ async function boot() {
     } else if (phase === 'playing') {
       playTime += dt;
       prevPos.copy(player.position);
-      player.landingAssist = landmarks.spots.find((s) => !found.has(s.id)
-        && Math.hypot(s.position.x - player.position.x, s.position.z - player.position.z) < 90)?.position ?? null;
+      player.landingAssist = nearestUnfoundSpot(90)?.position ?? null;
       const { anim, events } = player.update(dt, inp, world);
       macaw.object.position.copy(player.position);
       macaw.object.quaternion.copy(player.quaternion);

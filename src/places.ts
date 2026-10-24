@@ -23,7 +23,7 @@ export const PLACES = [
   },
   {
     id: 'newHome', nameHe: 'הבית החדש', nameEn: 'The New House', addressHe: 'קהילת ורשה 36',
-    lat: 32.111873, lon: 34.82121, footprint: { kind: 'containing' }, style: 'home', color: '#5fe36a',
+    lat: 32.111873, lon: 34.82121, footprint: { kind: 'containing' }, style: 'home', color: '#b48cff',
   },
 ] as const satisfies readonly {
   id: string; nameHe: string; nameEn: string; addressHe: string; lat: number; lon: number;

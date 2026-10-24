@@ -1,6 +1,6 @@
 # Macaw Sky · Tel Aviv (תוכי בשמי תל אביב)
 
-A browser game made for Amit and Or. Fly a blue-and-gold or scarlet macaw at golden hour over a real Tel Aviv, and find and land on two special places: David Yellin school (12 Kehilat Varsha St) and Gan Hadar kindergarten (7 Hadar Yosef St).
+A browser game made for Amit and Or. Fly a blue-and-gold or scarlet macaw at golden hour over a real Tel Aviv, and find and land on four special places: David Yellin school (12 Kehilat Varsha St), Gan Hadar kindergarten (7 Hadar Yosef St), the old house (8 HaKerem St) and the new house (36 Kehilat Varsha St). Special places are rows in `src/places.ts`; add one there and run `npm run build-data`.
 
 ## Controls
 
