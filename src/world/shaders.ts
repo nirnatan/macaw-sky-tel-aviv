@@ -33,6 +33,18 @@ export function withWorldPos(shader: THREE.WebGLProgramParametersWithUniforms, f
   shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWorldPos;\n' + GLSL_NOISE + fragmentPreamble);
 }
 
+/** Condition uniforms every city shader binds by reference, so one write per frame reaches every program. */
+export interface CityUniforms {
+  uNight: { value: number }; // 0 day .. 1 night, already eased so the sunset row reads 0
+  uWet: { value: number };
+  uLitFrac: { value: number }; // share of window cells lit
+  uPoolMinHw: { value: number }; // narrowest road half width that has lamps on this tier
+}
+export function createCityUniforms(): CityUniforms {
+  return { uNight: { value: 0 }, uWet: { value: 0 }, uLitFrac: { value: 0.025 }, uPoolMinHw: { value: 0 } };
+}
+export const CITY_UNIFORMS_GLSL = 'uniform float uNight, uWet, uLitFrac, uPoolMinHw;\n';
+
 export function srgb(hex: string | number): [number, number, number] {
   const c = new THREE.Color(hex);
   return [c.r, c.g, c.b];

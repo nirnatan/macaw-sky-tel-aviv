@@ -30,7 +30,14 @@ const STREET: Partial<Record<RoadKind, { spacing: number; bothSides: boolean }>>
   secondary: { spacing: 50, bothSides: true },
 };
 
-export interface TreeLayer { byChunk: THREE.Group[]; time: { value: number }; setDensity(fraction: number): void }
+export interface TreeLayer {
+  byChunk: THREE.Group[];
+  time: { value: number };
+  materials: THREE.MeshStandardMaterial[];
+  setDensity(fraction: number): void;
+  /** Scales every species' sway (1 = a calm sea breeze). */
+  setWind(strength: number): void;
+}
 
 export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics): TreeLayer {
   const rand = rng(11);
@@ -77,10 +84,15 @@ export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics
   const time = { value: 0 };
   const byChunk = Array.from({ length: grid.count }, () => new THREE.Group());
   const instanced: { mesh: THREE.InstancedMesh; max: number }[] = [];
+  const materials: THREE.MeshStandardMaterial[] = [];
+  const sways: { uniform: { value: number }; calm: number }[] = [];
   for (const species of SPECIES) {
     const spec = SPEC[species];
     const geometry = spec.geometry();
-    const material = treeMaterial(spec, time);
+    const sway = { value: spec.sway };
+    const material = treeMaterial(spec, time, sway);
+    materials.push(material);
+    sways.push({ uniform: sway, calm: spec.sway });
     lists[species].forEach((list, chunk) => {
       const n = list.length / 4;
       if (!n) return;
@@ -107,16 +119,17 @@ export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics
     });
   }
   return {
-    byChunk, time,
+    byChunk, time, materials,
     setDensity(fraction) { for (const t of instanced) t.mesh.count = Math.max(1, Math.round(t.max * fraction)); },
+    setWind(strength) { for (const s of sways) s.uniform.value = s.calm * strength; },
   };
 }
 
-function treeMaterial(spec: SpeciesSpec, time: { value: number }): THREE.MeshStandardMaterial {
+function treeMaterial(spec: SpeciesSpec, time: { value: number }, sway: { value: number }): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0, side: spec.side });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
-    shader.uniforms.uSway = { value: spec.sway };
+    shader.uniforms.uSway = sway;
     shader.uniforms.uHeight = { value: spec.height };
     shader.vertexShader = after(shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime, uSway, uHeight;'), 'begin_vertex', /* glsl */ `
       #ifdef USE_INSTANCING

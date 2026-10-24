@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Building, BuildingKind, CityData, Ring } from './data';
 import { ChunkGrid, GeometryWriter, hash01, insetRing, ringArea, ringCentroid, rng, samplePointsInPolygon, triangulate } from './geom';
 import type { Footprint } from './physics';
-import { after, srgb, withWorldPos } from './shaders';
+import { after, CITY_UNIFORMS_GLSL, type CityUniforms, srgb, withWorldPos } from './shaders';
 
 type Rgb = [number, number, number];
 /** Surface types the facade shader switches on (integer part of aFacade.w; the fraction carries wall length / 1000). */
@@ -33,6 +33,7 @@ export interface Buildings {
   chunks: (THREE.Mesh | null)[];
   heaters: (THREE.InstancedMesh | null)[];
   acUnits: (THREE.InstancedMesh | null)[];
+  clutterMaterial: THREE.MeshStandardMaterial;
   footprints: Footprint[];
 }
 
@@ -41,7 +42,7 @@ function buildingHeight(b: Building): number {
   return b.height > 300 ? 12 + b.seed * 6 : Math.min(b.height, 260);
 }
 
-export function buildBuildings(data: CityData, grid: ChunkGrid): Buildings {
+export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUniforms): Buildings {
   const writers: GeometryWriter[] = Array.from({ length: grid.count }, () => new GeometryWriter(LAYOUT, 512));
   const heaterMatrices: number[][] = Array.from({ length: grid.count }, () => []);
   const acMatrices: number[][] = Array.from({ length: grid.count }, () => []);
@@ -84,7 +85,7 @@ export function buildBuildings(data: CityData, grid: ChunkGrid): Buildings {
     }
   }
 
-  const material = facadeMaterial();
+  const material = facadeMaterial(uniforms);
   const chunks = writers.map((w) => {
     const g = w.toGeometry();
     if (!g) return null;
@@ -96,7 +97,7 @@ export function buildBuildings(data: CityData, grid: ChunkGrid): Buildings {
   const clutterMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.1 });
   const heaters = heaterMatrices.map((list) => instances(heaterGeometry(), clutterMaterial, list, rand));
   const acUnits = acMatrices.map((list) => instances(acGeometry(), clutterMaterial, list, rand));
-  return { chunks, heaters, acUnits, footprints };
+  return { chunks, heaters, acUnits, clutterMaterial, footprints };
 }
 
 function scale(c: Rgb, k: number): Rgb { return [c[0] * k, c[1] * k, c[2] * k]; }
@@ -193,17 +194,25 @@ function acGeometry(): THREE.BufferGeometry {
   return g;
 }
 
-function facadeMaterial(): THREE.MeshStandardMaterial {
+function facadeMaterial(uniforms: CityUniforms): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, flatShading: true });
   m.onBeforeCompile = (shader) => {
-    withWorldPos(shader, 'varying vec4 vFacade;\n' + FACADE_GLSL);
+    Object.assign(shader.uniforms, uniforms);
+    withWorldPos(shader, 'varying vec4 vFacade;\n' + CITY_UNIFORMS_GLSL + FACADE_GLSL);
     shader.vertexShader = after(shader.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aFacade;\nvarying vec4 vFacade;'), 'begin_vertex', 'vFacade = aFacade;');
     shader.fragmentShader = after(shader.fragmentShader, 'color_fragment', /* glsl */ `
-      float glass = 0.0, lit = 0.0;
-      diffuseColor.rgb = facade(diffuseColor.rgb, vFacade, vWorldPos, glass, lit);`);
-    shader.fragmentShader = after(shader.fragmentShader, 'roughnessmap_fragment', 'roughnessFactor = mix(roughnessFactor, 0.2, glass);');
-    shader.fragmentShader = after(shader.fragmentShader, 'metalnessmap_fragment', 'metalnessFactor = mix(metalnessFactor, 0.25, glass);');
-    shader.fragmentShader = after(shader.fragmentShader, 'emissivemap_fragment', 'totalEmissiveRadiance += lit * vec3(1.0, 0.6, 0.28) * 0.7 + glass * diffuseColor.rgb * 0.12;');
+      float glass = 0.0, roof = 0.0;
+      vec3 lit = vec3(0.0);
+      diffuseColor.rgb = facade(diffuseColor.rgb, vFacade, vWorldPos, glass, lit, roof);
+      float roofPuddle = step(0.99, roof) * smoothstep(0.6, 0.66, fbm(vWorldPos.xz * 0.3 + 4.0)) * smoothstep(0.35, 0.95, uWet);
+      diffuseColor.rgb *= (1.0 - uWet * mix(0.08, 0.34, roof)) * (1.0 - 0.15 * roofPuddle);`);
+    shader.fragmentShader = after(shader.fragmentShader, 'roughnessmap_fragment', /* glsl */ `
+      roughnessFactor = mix(roughnessFactor, 0.2, glass);
+      roughnessFactor = mix(roughnessFactor, 0.28, uWet * roof);
+      roughnessFactor = mix(roughnessFactor, 0.06, roofPuddle);`);
+    shader.fragmentShader = after(shader.fragmentShader, 'metalnessmap_fragment', 'metalnessFactor = mix(mix(metalnessFactor, 0.25, glass), 0.35, roofPuddle);');
+    shader.fragmentShader = after(shader.fragmentShader, 'emissivemap_fragment',
+      'totalEmissiveRadiance += lit * mix(0.7, 1.6, uNight) + glass * diffuseColor.rgb * 0.12 * (1.0 - uNight);');
   };
   return m;
 }
@@ -213,10 +222,18 @@ const float FLOOR_H = 3.3;
 const float BAY_W = 3.0;
 const vec3 GLASS_DARK = vec3(0.10, 0.11, 0.13);
 const vec3 GLASS_SKY = vec3(0.42, 0.55, 0.70);
+const vec3 LIT_DAY = vec3(1.0, 0.6, 0.28);
+
+// Night window color from a second hash: mostly warm lamps, some cool white, the odd blue TV, at 0.6..1.4 brightness.
+vec3 windowLight(vec2 id) {
+  float h = hash12(id * 1.73 + 11.3), k = hash12(id.yx * 2.31 + 5.1);
+  vec3 tint = h < 0.55 ? vec3(1.0, 0.52, 0.2) : h < 0.85 ? vec3(1.0, 0.72, 0.4) : h < 0.95 ? vec3(0.85, 0.86, 0.9) : vec3(0.35, 0.55, 1.0);
+  return mix(LIT_DAY, tint * (0.6 + 0.8 * k), uNight);
+}
 
 float floorHeight(float top) { return top / max(1.0, floor(top / FLOOR_H + 0.5)); } // whole floors, so no blank attic band
 
-vec3 plasterWalls(vec3 c, float u, float v, float seed, float len, float top, bool pilotis, inout float glass, inout float lit) {
+vec3 plasterWalls(vec3 c, float u, float v, float seed, float len, float top, bool pilotis, inout float glass, inout vec3 lit) {
   float fy = v / floorHeight(top);
   float floorIdx = floor(fy), f = fract(fy);
   float uc = u - len * 0.5;
@@ -241,29 +258,35 @@ vec3 plasterWalls(vec3 c, float u, float v, float seed, float len, float top, bo
   c = mix(c, c * 0.55, band * step(abs(f - 0.34), 0.015));
   c = mix(c, c * 0.72, slabLine);
   float shutter = step(0.22, cell) * step(cell, 0.4);
-  vec3 pane = mix(GLASS_DARK, GLASS_SKY, 0.35 + 0.3 * hash12(vec2(seed, bay)));
+  vec3 pane = mix(mix(GLASS_DARK, GLASS_SKY, 0.35 + 0.3 * hash12(vec2(seed, bay))), GLASS_DARK, uNight);
   vec3 opening = mix(pane, vec3(0.78, 0.74, 0.66) * (0.8 + 0.2 * hash12(vec2(bay, seed))), shutter);
   c = mix(c, opening, win);
   glass = win * (1.0 - shutter);
-  lit = glass * step(0.975, cell);
+  vec2 id = vec2(bay + seed * 91.0, floorIdx + seed * 37.0);
+  lit = glass * step(1.0 - uLitFrac, cell) * windowLight(id);
+  float slats = step(0.45, fract(v * 8.0)) * step(0.3, cell); // light through the closed trisim slats
+  lit += win * shutter * slats * uNight * 0.22 * windowLight(id);
   return c;
 }
 
-vec3 glassWalls(vec3 c, float u, float v, float seed, float top, inout float glass, inout float lit) {
+vec3 glassWalls(vec3 c, float u, float v, float seed, float top, inout float glass, inout vec3 lit) {
   float fy = v / floorHeight(top);
   float f = fract(fy), fb = fract(u / 1.5);
   float mullion = clamp(step(f, 0.035) + step(fb, 0.05), 0.0, 1.0);
   float spandrel = step(0.76, f);
   float cell = hash12(vec2(floor(u / 1.5) + seed * 91.0, floor(fy) + seed * 37.0));
-  vec3 pane = mix(c, GLASS_SKY * 1.25, 0.4);
+  vec3 pane = mix(mix(c, GLASS_SKY * 1.25, 0.4), GLASS_DARK, uNight * 0.85);
   vec3 out3 = mix(pane, c * 0.62, spandrel);
   out3 = mix(out3, c * 0.45, mullion);
   glass = (1.0 - spandrel) * (1.0 - mullion);
-  lit = glass * step(0.985, cell) * 0.5;
+  float floorId = floor(fy) + seed * 37.0;
+  float office = step(1.0 - (uLitFrac - 0.025) * 0.6, hash12(vec2(floorId, seed * 13.0))); // whole office floors at night
+  vec3 officeLight = mix(LIT_DAY, vec3(1.0, 0.86, 0.66) * (0.45 + 0.3 * hash12(vec2(seed, floorId))), uNight);
+  lit = glass * max(step(1.0 - uLitFrac * 0.6, cell) * 0.5 * windowLight(vec2(floor(u / 1.5) + seed * 91.0, floorId)), office * officeLight);
   return out3;
 }
 
-vec3 targetWalls(vec3 c, float u, float v, float seed, float len, float top, inout float glass, inout float lit) {
+vec3 targetWalls(vec3 c, float u, float v, float seed, float len, float top, inout float glass, inout vec3 lit) {
   float floorIdx = floor(v / floorHeight(top)), bay = floor(u / 4.5);
   float pick = hash12(vec2(bay * 3.1 + 7.0, floorIdx * 5.3 + 1.0));
   vec3 palette = pick < 0.25 ? vec3(1.0, 0.76, 0.2) : pick < 0.5 ? vec3(0.2, 0.72, 0.72) : pick < 0.75 ? vec3(1.0, 0.45, 0.35) : vec3(0.55, 0.5, 0.9);
@@ -271,7 +294,8 @@ vec3 targetWalls(vec3 c, float u, float v, float seed, float len, float top, ino
   return plasterWalls(base, u, v, seed, len, top, false, glass, lit);
 }
 
-vec3 facade(vec3 c, vec4 fac, vec3 wp, inout float glass, inout float lit) {
+// roof: 1 on horizontal roofs (they pool water), 0.6 on parapets, 0 on walls.
+vec3 facade(vec3 c, vec4 fac, vec3 wp, inout float glass, inout vec3 lit, inout float roof) {
   float type = floor(fac.w + 0.0005);
   float len = fract(fac.w) * 1000.0;
   float u = fac.x, seed = fac.y, top = fac.z, v = wp.y;
@@ -280,10 +304,12 @@ vec3 facade(vec3 c, vec4 fac, vec3 wp, inout float glass, inout float lit) {
   if (type < 2.5) return glassWalls(c, u, v, seed, top, glass, lit);
   if (type < 3.5) return targetWalls(c, u, v, seed, len, top, glass, lit);
   if (type < 4.5) {
+    roof = 1.0;
     float grime = fbm(wp.xz * 0.35 + seed * 10.0);
     return c * (0.9 + 0.14 * grime) * (0.96 + 0.06 * vnoise(wp.xz * 3.0));
   }
-  if (type < 5.5) return c * 0.97;
+  if (type < 5.5) { roof = 0.6; return c * 0.97; }
+  roof = 1.0;
   float stripe = step(0.5, fract((wp.x + wp.z * 0.3) / 7.0));
   return mix(vec3(1.0, 0.8, 0.2), vec3(1.0, 0.42, 0.32), stripe) * (0.9 + 0.1 * vnoise(wp.xz * 2.0));
 }
