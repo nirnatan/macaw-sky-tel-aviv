@@ -151,7 +151,7 @@ class MacawImpl implements Macaw {
   applyLighting(l: Lighting): void {
     const s = this.rig.surfaces;
     const w = l.wetness;
-    s.uniforms.uLift.value = lerp(0.16, 0.24, l.night);
+    s.uniforms.uLift.value = lerp(0.16, 0.28, THREE.MathUtils.smoothstep(l.night, 0.3, 0.9)); // the sunset row (0.15) keeps today's 0.16
     s.uniforms.uRim.value = lerp(0, 0.35, THREE.MathUtils.smoothstep(l.night, 0.3, 1));
     s.uniforms.uWet.value = w;
     s.plumage.roughness = lerp(0.72, 0.5, w);

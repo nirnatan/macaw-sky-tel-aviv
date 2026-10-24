@@ -100,7 +100,8 @@ async function boot() {
   const startYaw = firstRing ? Math.atan2(-(firstRing.x - START[0]), -(firstRing.z - START[1])) : -Math.PI / 2;
   player.placeOnGround(START[0], START[1], Math.PI / 2, world); // on the menu the bird faces the sunset, so its face is sunlit
   const chase = new ChaseCamera(camera, renderer.domElement);
-  const heroLight = new THREE.PointLight(0xffeedd, 3, 7, 2); // short-range fill so the macaw reads; never hidden (light count is in every program key)
+  const HERO_WARM = new THREE.Color(0xffeedd), HERO_MOON = new THREE.Color(0xcfd8ff);
+  const heroLight = new THREE.PointLight(HERO_WARM, 3, 7, 2); // short-range fill so the macaw reads; never hidden (light count is in every program key)
   scene.add(heroLight);
   const heroOffset = new THREE.Vector3(0.6, 0.8, 0);
 
@@ -271,8 +272,11 @@ async function boot() {
     city.applyLighting(L);
     landmarks.applyLighting(L);
     macaw.applyLighting(L);
-    heroLight.intensity = THREE.MathUtils.lerp(3, 8, L.night);
-    heroLight.distance = THREE.MathUtils.lerp(7, 10, L.night);
+    const heroNight = THREE.MathUtils.smoothstep(L.night, 0.3, 0.9); // the sunset row (0.15) keeps today's exact 3 / 7 / warm
+    const closeUp = phase === 'menu' ? heroNight : 0; // the menu sand is a metre under the light and must stay moonlit; in flight nothing is that close
+    heroLight.intensity = THREE.MathUtils.lerp(3, 3.5, heroNight) * THREE.MathUtils.lerp(1, 0.15, closeUp);
+    heroLight.distance = THREE.MathUtils.lerp(7, 10, heroNight);
+    heroLight.color.lerpColors(HERO_WARM, HERO_MOON, heroNight);
     heroLight.position.copy(heroOffset).applyQuaternion(camera.quaternion).add(camera.position);
     rain.update(dt, L, camera);
 
