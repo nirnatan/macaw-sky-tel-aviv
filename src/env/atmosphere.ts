@@ -1,61 +1,63 @@
 import * as THREE from 'three';
 
-// One source of truth for the golden-hour look. Sky, sea and every built-in material's fog read these,
-// so the far city, the sea and the sky meet at the horizon in the same haze color.
+// One source of truth for the haze. Sky, sea and every built-in material's fog read the same uniforms,
+// so the far city, the sea and the sky meet at the horizon in the same color at every time of day.
+//
+// The values are Float32Arrays written in place and never reassigned. three's cloneUniforms copies
+// Color/Vector/Matrix/Texture values and slices plain Arrays, but keeps every other value by reference
+// (three 0.186.1, UniformsUtils.js:63-65), so one array reaches every program compiled from ShaderLib.
 
-const SUN_ELEVATION = THREE.MathUtils.degToRad(8.5);
-const SUN_AZIMUTH = THREE.MathUtils.degToRad(255); // compass bearing, clockwise from north (-z)
+const vec3 = () => ({ value: new Float32Array(3) });
 
-export const SUN_DIRECTION = new THREE.Vector3(
-  Math.cos(SUN_ELEVATION) * Math.sin(SUN_AZIMUTH),
-  Math.sin(SUN_ELEVATION),
-  -Math.cos(SUN_ELEVATION) * Math.cos(SUN_AZIMUTH),
-).normalize();
+export const atmosphereUniforms = {
+  uAtmoSunDir: vec3(), // the true sun, never the moon
+  uAtmoMoonDir: vec3(),
+  uAtmoSkyZenith: vec3(),
+  uAtmoSkyMidAway: vec3(),
+  uAtmoSkyMidSun: vec3(),
+  uAtmoSkyHorizonAway: vec3(),
+  uAtmoSkyHorizonSun: vec3(),
+  uAtmoSkyGlow: vec3(),
+  uAtmoHazeAway: vec3(),
+  uAtmoHazeSun: vec3(),
+  uAtmoHazeGlow: vec3(),
+  uAtmoCloudLit: vec3(),
+  uAtmoCloudShade: vec3(),
+  uAtmoParams: { value: new Float32Array(4) }, // x fog height falloff, y night, z overcast, w rainbow
+} satisfies Record<string, { readonly value: Float32Array }>;
 
-const srgb = (hex: string, scale = 1) => new THREE.Color(hex).multiplyScalar(scale);
-
-export const PALETTE = {
-  sunLight: srgb('#ff8f45'),
-  sunDisk: srgb('#ffb060', 22),
-  skyZenith: srgb('#35609a'),
-  skyMidAway: srgb('#a3b0d0'),
-  skyMidSun: srgb('#f3bb72', 0.8),
-  skyHorizonAway: srgb('#dea39c'),
-  skyHorizonSun: srgb('#ff8f3d', 1.2),
-  skyGlow: srgb('#ff8a35', 1.0),
-  hazeAway: srgb('#ab99a4', 0.72),
-  hazeSun: srgb('#ff9a52', 0.85),
-  hazeGlow: srgb('#ff9c42', 1.4),
-  cloudLit: srgb('#ffb48c', 1.25),
-  cloudShade: srgb('#7c6a83', 0.9),
-  ground: srgb('#4a3a30', 0.6),
-} as const;
-
-export const SUN_INTENSITY = 4.2;
-export const FOG_DENSITY = 0.0004; // at sea level: things fade into the haze by ~5 km
-const FOG_HEIGHT_FALLOFF = 1 / 420; // haze thins with altitude
-
-export const glslVec3 = (c: THREE.Color | THREE.Vector3) => {
-  const [x, y, z] = c instanceof THREE.Color ? [c.r, c.g, c.b] : [c.x, c.y, c.z];
-  return `vec3(${x.toFixed(5)}, ${y.toFixed(5)}, ${z.toFixed(5)})`;
-};
+export const FOG_HEIGHT_FALLOFF = 1 / 420; // haze thins with altitude
 
 export const ATMOSPHERE_GLSL = /* glsl */ `
-const vec3 SUN_DIR = ${glslVec3(SUN_DIRECTION)};
-const vec3 SKY_ZENITH = ${glslVec3(PALETTE.skyZenith)};
-const vec3 SKY_MID_AWAY = ${glslVec3(PALETTE.skyMidAway)};
-const vec3 SKY_MID_SUN = ${glslVec3(PALETTE.skyMidSun)};
-const vec3 SKY_HORIZON_AWAY = ${glslVec3(PALETTE.skyHorizonAway)};
-const vec3 SKY_HORIZON_SUN = ${glslVec3(PALETTE.skyHorizonSun)};
-const vec3 SKY_GLOW = ${glslVec3(PALETTE.skyGlow)};
-const vec3 HAZE_AWAY = ${glslVec3(PALETTE.hazeAway)};
-const vec3 HAZE_SUN = ${glslVec3(PALETTE.hazeSun)};
-const vec3 HAZE_GLOW = ${glslVec3(PALETTE.hazeGlow)};
-const float FOG_HEIGHT_FALLOFF = ${FOG_HEIGHT_FALLOFF.toFixed(6)};
+uniform vec3 uAtmoSunDir;
+uniform vec3 uAtmoSkyZenith;
+uniform vec3 uAtmoSkyMidAway;
+uniform vec3 uAtmoSkyMidSun;
+uniform vec3 uAtmoSkyHorizonAway;
+uniform vec3 uAtmoSkyHorizonSun;
+uniform vec3 uAtmoSkyGlow;
+uniform vec3 uAtmoHazeAway;
+uniform vec3 uAtmoHazeSun;
+uniform vec3 uAtmoHazeGlow;
+uniform vec4 uAtmoParams;
+#define SUN_DIR uAtmoSunDir
+#define SKY_ZENITH uAtmoSkyZenith
+#define SKY_MID_AWAY uAtmoSkyMidAway
+#define SKY_MID_SUN uAtmoSkyMidSun
+#define SKY_HORIZON_AWAY uAtmoSkyHorizonAway
+#define SKY_HORIZON_SUN uAtmoSkyHorizonSun
+#define SKY_GLOW uAtmoSkyGlow
+#define HAZE_AWAY uAtmoHazeAway
+#define HAZE_SUN uAtmoHazeSun
+#define HAZE_GLOW uAtmoHazeGlow
+#define FOG_HEIGHT_FALLOFF uAtmoParams.x
+#define ATMO_NIGHT uAtmoParams.y
+#define ATMO_OVERCAST uAtmoParams.z
+#define ATMO_RAINBOW uAtmoParams.w
 
 float atmoSunSide(vec3 dir) {
   vec2 h = dir.xz / max(length(dir.xz), 1e-4);
-  float side = dot(h, normalize(SUN_DIR.xz)) * 0.5 + 0.5;
+  float side = dot(h, SUN_DIR.xz / max(length(SUN_DIR.xz), 1e-3)) * 0.5 + 0.5;
   return side * side;
 }
 
@@ -93,7 +95,8 @@ vec3 atmoApply(vec3 color, vec3 toFrag, float density) {
 `;
 
 // Built-in materials (and ShaderMaterials with fog: true that include the fog chunks) get the same
-// height-based, sun-tinted haze as the sky and sea instead of three's flat-color fog.
+// height-based, sun-tinted haze as the sky and sea instead of three's flat-color fog. Must run before
+// the first material compiles: a program compiled earlier never sees the shared uniforms.
 export function installAtmosphericFog(scene: THREE.Scene) {
   THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n varying vec3 vFogWorldDir;\n#endif';
   THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n vFogWorldDir = mvPosition.xyz * mat3( viewMatrix );\n#endif';
@@ -104,5 +107,19 @@ export function installAtmosphericFog(scene: THREE.Scene) {
  ${ATMOSPHERE_GLSL}
 #endif`;
   THREE.ShaderChunk.fog_fragment = '#ifdef USE_FOG\n gl_FragColor.rgb = atmoApply( gl_FragColor.rgb, vFogWorldDir, fogDensity );\n#endif';
-  scene.fog = new THREE.FogExp2(PALETTE.hazeAway.clone(), FOG_DENSITY);
+  for (const k in THREE.ShaderLib) Object.assign(THREE.ShaderLib[k as keyof typeof THREE.ShaderLib].uniforms, atmosphereUniforms);
+  scene.fog = new THREE.FogExp2(0x000000, 0);
+}
+
+/** Dev check: a compiled fogged built-in material holds the very same array as the shared table. null = none compiled yet. */
+export function sharedUniformsReachMaterials(renderer: THREE.WebGLRenderer, scene: THREE.Scene): boolean | null {
+  let result: boolean | null = null;
+  scene.traverse((o) => {
+    if (result !== null) return;
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (!m?.isMeshStandardMaterial || !m.fog) return;
+    const uniforms = (renderer.properties.get(m) as { uniforms?: Record<string, { value: unknown }> }).uniforms;
+    if (uniforms) result = uniforms.uAtmoSunDir?.value === atmosphereUniforms.uAtmoSunDir.value;
+  });
+  return result;
 }
