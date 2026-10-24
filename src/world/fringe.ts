@@ -8,7 +8,7 @@ const RADIUS = 9000;
 const SPACING = 52;
 const COAST_MAX_X = 1000; // the coast never reaches further east, so beyond it every candidate is land
 
-export interface Fringe { mesh: THREE.InstancedMesh; setFraction(f: number): void }
+export interface Fringe { mesh: THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>; setFraction(f: number): void }
 
 export function buildFringe(data: CityData): Fringe {
   const rand = rng(23);

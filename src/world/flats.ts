@@ -3,8 +3,9 @@
 import * as THREE from 'three';
 import type { AreaKind, CityData, Ring, RoadKind } from './data';
 import { ChunkGrid, GeometryWriter, pointInRing, polylineLength, ringCentroid, triangulate } from './geom';
+import { addLampStations, LAMP_POOL_GLSL } from './lamps';
 import { RIVER_HALF_WIDTH } from './physics';
-import { after, srgb, withWorldPos } from './shaders';
+import { after, CITY_UNIFORMS_GLSL, type CityUniforms, srgb, withWorldPos } from './shaders';
 
 const SURF = { fill: 0, asphalt: 1, pavement: 2, rail: 3, water: 4, vegetation: 5, sand: 6, concrete: 7 } as const;
 type Surf = (typeof SURF)[keyof typeof SURF];
@@ -42,9 +43,14 @@ const GROUND_RADIUS = 13000;
 
 const LAYOUT = [{ name: 'position', size: 3 }, { name: 'color', size: 3 }, { name: 'aSurf', size: 4 }];
 
-export interface Flats { ground: THREE.Mesh; chunks: (THREE.Mesh | null)[]; time: { value: number } }
+export interface Flats {
+  ground: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  chunks: (THREE.Mesh | null)[];
+  time: { value: number };
+  lampStations: number[]; // [x, y, z, paved half width] per street lamp
+}
 
-export function buildFlats(data: CityData, grid: ChunkGrid): Flats {
+export function buildFlats(data: CityData, grid: ChunkGrid, uniforms: CityUniforms): Flats {
   const time = { value: 0 };
   const writers: GeometryWriter[] = Array.from({ length: grid.count }, () => new GeometryWriter(LAYOUT, 256));
   const writerAt = (x: number, z: number) => writers[grid.indexOf(x, z)];
@@ -54,12 +60,14 @@ export function buildFlats(data: CityData, grid: ChunkGrid): Flats {
     const [cx, cz] = ringCentroid(a.rings[0]);
     fillPolygon(writerAt(cx, cz), a.rings, style.y, style.color, style.type);
   }
+  const lampStations: number[] = [];
   for (const r of data.roads) {
     const style = ROAD_STYLE[r.kind];
     const flat = () => style.y;
     const total = r.bridge ? polylineLength(r.pts) : 0;
     const yAt = r.bridge ? (s: number) => style.y + BRIDGE_HEIGHT * Math.min(1, Math.min(s, total - s) / Math.min(40, total / 2)) : flat;
     ribbon(writerAt, grid, r.pts, r.width / 2 + style.sidewalk, r.width / 2, style.color, style.type, yAt, r.bridge);
+    if (style.type === SURF.asphalt) addLampStations(lampStations, r.pts, r.width / 2, yAt);
   }
   for (const r of data.rivers) {
     const hw = r.major ? RIVER_HALF_WIDTH.major : RIVER_HALF_WIDTH.minor;
@@ -67,7 +75,7 @@ export function buildFlats(data: CityData, grid: ChunkGrid): Flats {
   }
   beachStrip(writerAt, grid, data.coast);
 
-  const material = flatsMaterial(time);
+  const material = flatsMaterial(time, uniforms);
   const chunks = writers.map((w) => {
     const g = w.toGeometry();
     if (!g) return null;
@@ -76,7 +84,7 @@ export function buildFlats(data: CityData, grid: ChunkGrid): Flats {
     m.matrixAutoUpdate = false;
     return m;
   });
-  return { ground: buildGround(data.coast), chunks, time };
+  return { ground: buildGround(data.coast), chunks, time, lampStations };
 }
 
 
@@ -161,7 +169,7 @@ function beachStrip(writerAt: (x: number, z: number) => GeometryWriter, grid: Ch
 }
 
 /** Land polygon: the coast chain closed around the east side of a big square, so ground never covers the sea. */
-function buildGround(coast: Ring): THREE.Mesh {
+function buildGround(coast: Ring): Flats['ground'] {
   const R = GROUND_RADIUS;
   const n = coast.length;
   const head = exitPoint(coast[0], coast[1], coast[0] - coast[4], coast[1] - coast[5], R);
@@ -225,18 +233,22 @@ function groundMaterial(): THREE.MeshStandardMaterial {
   return m;
 }
 
-function flatsMaterial(time: { value: number }): THREE.MeshStandardMaterial {
+/** How much each surface type darkens and gains gloss when wet, indexed by SURF. */
+const WETTABLE_GLSL = 'const float WETTABLE[8] = float[8](0.8, 1.0, 0.9, 0.6, 0.0, 0.35, 0.45, 0.75);\n';
+
+function flatsMaterial(time: { value: number }, uniforms: CityUniforms): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
-    withWorldPos(shader);
+    Object.assign(shader.uniforms, uniforms);
+    withWorldPos(shader, CITY_UNIFORMS_GLSL + LAMP_POOL_GLSL + WETTABLE_GLSL);
     shader.vertexShader = after(shader.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aSurf;\nvarying vec4 vSurf;'), 'begin_vertex', 'vSurf = aSurf;');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec4 vSurf;\nuniform float uTime;');
     shader.fragmentShader = after(shader.fragmentShader, 'color_fragment', /* glsl */ `
       vec3 c = diffuseColor.rgb;
       vec2 wp = vWorldPos.xz;
       float type = vSurf.z, au = vSurf.x, av = abs(vSurf.y), hw = vSurf.w;
-      float water = 0.0;
+      float water = 0.0, puddleable = 0.0, pool = 0.0;
       if (type < 0.5) {
         c *= 0.94 + 0.12 * fbm(wp * 0.08);
       } else if (type < 1.5) {
@@ -254,8 +266,11 @@ function flatsMaterial(time: { value: number }): THREE.MeshStandardMaterial {
           if (hw > 5.9) paint += dash * step(abs(av - hw * 0.5), 0.07);
         }
         c = mix(c, vec3(0.72, 0.7, 0.62), clamp(paint, 0.0, 1.0) * (1.0 - onSide));
+        puddleable = 1.0 - onSide;
+        pool = lampPool(au, vSurf.y, hw) * uNight;
       } else if (type < 2.5) {
         c *= 0.93 + 0.14 * vnoise(wp * 1.3);
+        puddleable = 0.8;
       } else if (type < 3.5) {
         float rail = step(abs(av - 0.72), 0.07);
         float sleeper = step(fract(au / 0.7), 0.4) * step(av, 1.3);
@@ -274,10 +289,24 @@ function flatsMaterial(time: { value: number }): THREE.MeshStandardMaterial {
       } else {
         c *= 0.95 + 0.1 * vnoise(wp * 0.5);
       }
+      float wet = uWet * WETTABLE[int(type + 0.5)];
+      float puddle = puddleable * smoothstep(0.6, 0.66, fbm(wp * 0.07 + 31.0) + 0.05 * vnoise(wp * 0.8)) * smoothstep(0.35, 0.95, uWet);
+      c *= 1.0 - 0.42 * wet;
+      c = mix(c, c * 0.6, puddle);
       diffuseColor.rgb = c;`);
-    shader.fragmentShader = after(shader.fragmentShader, 'roughnessmap_fragment', 'roughnessFactor = mix(roughnessFactor, 0.12, water);');
-    shader.fragmentShader = after(shader.fragmentShader, 'metalnessmap_fragment', 'metalnessFactor = mix(metalnessFactor, 0.55, water);');
-    shader.fragmentShader = after(shader.fragmentShader, 'emissivemap_fragment', 'totalEmissiveRadiance += water * vec3(0.02, 0.05, 0.07);');
+    shader.fragmentShader = after(shader.fragmentShader, 'roughnessmap_fragment', /* glsl */ `
+      roughnessFactor = mix(roughnessFactor, 0.12, water);
+      roughnessFactor = mix(roughnessFactor, mix(0.45, 0.2, puddleable), wet); // paving stays rougher than asphalt
+      roughnessFactor = mix(roughnessFactor, 0.05, puddle);`);
+    shader.fragmentShader = after(shader.fragmentShader, 'metalnessmap_fragment', /* glsl */ `
+      metalnessFactor = mix(metalnessFactor, 0.55, water);
+      metalnessFactor = mix(metalnessFactor, 0.35, puddle);`);
+    shader.fragmentShader = after(shader.fragmentShader, 'emissivemap_fragment', /* glsl */ `
+      totalEmissiveRadiance += water * vec3(0.02, 0.05, 0.07);
+      totalEmissiveRadiance += pool * LAMP_RGB * diffuseColor.rgb * 2.4 / (1.0 + 2.0 * diffuseColor.rgb); // soft knee, so pale sidewalks glow without turning white
+      mat2 toWorld = ribbonToWorld(wp, au, vSurf.y);
+      if (uNight * wet > 0.001 && type > 0.5 && type < 1.5 && hw >= uPoolMinHw)
+        totalEmissiveRadiance += lampGlints(toWorld, vWorldPos, au, vSurf.y, hw, roughnessFactor) * wet * uNight;`);
   };
   return m;
 }
