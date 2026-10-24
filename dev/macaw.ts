@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { MacawAnimInput, MacawMode, Species } from '../src/contracts';
+import type { Lighting, MacawAnimInput, MacawMode, Species } from '../src/contracts';
 import { createMacaw } from '../src/macaw';
 
 const MODES: MacawMode[] = ['flap', 'glide', 'dive', 'hover', 'land', 'walk', 'idle'];
@@ -17,7 +17,8 @@ renderer.toneMappingExposure = 1.1;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#f6b877');
+const background = new THREE.Color('#f6b877');
+scene.background = background;
 const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.02, 100);
 const controls = new OrbitControls(camera, renderer.domElement);
 
@@ -32,7 +33,8 @@ sun.shadow.camera.far = 14;
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.004;
 scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight('#ffd9b0', '#8a6e52', 1.3));
+const hemi = new THREE.HemisphereLight('#ffd9b0', '#8a6e52', 1.3);
+scene.add(hemi);
 const fill = new THREE.DirectionalLight('#9fc4ff', 0.5);
 fill.position.set(4, 3, -3);
 scene.add(fill);
@@ -48,6 +50,30 @@ const birds = (['blueGold', 'scarlet'] as Species[]).map((species, i) => {
   scene.add(macaw.object);
   return macaw;
 });
+
+// Stand-ins for the environment's blend: the same lights and sky at night 0, a moonlit blue sky and dim cool light at night 1.
+const NIGHT = { background: new THREE.Color('#0b1a3d'), sun: new THREE.Color('#8fb0ff'), sunIntensity: 0.9, hemiSky: new THREE.Color('#33508f'), hemiGround: new THREE.Color('#141c33'), hemiIntensity: 0.7, fillIntensity: 0.15, exposure: 1.4 };
+const DAY = { background: background.clone(), sun: sun.color.clone(), sunIntensity: sun.intensity, hemiSky: hemi.color.clone(), hemiGround: hemi.groundColor.clone(), hemiIntensity: hemi.intensity, fillIntensity: fill.intensity, exposure: renderer.toneMappingExposure };
+const conditions = { night: 0, wetness: 0 };
+const lighting: { -readonly [K in keyof Lighting]: Lighting[K] } = {
+  sunDirection: sun.position.clone().normalize(), sunColor: new THREE.Color(), hazeColor: new THREE.Color(), night: 0, morning: 0, rain: 0, wetness: 0, overcast: 0, rainbow: 0,
+};
+
+function applyConditions(): void {
+  const n = conditions.night;
+  background.lerpColors(DAY.background, NIGHT.background, n);
+  sun.color.lerpColors(DAY.sun, NIGHT.sun, n);
+  sun.intensity = THREE.MathUtils.lerp(DAY.sunIntensity, NIGHT.sunIntensity, n);
+  hemi.color.lerpColors(DAY.hemiSky, NIGHT.hemiSky, n);
+  hemi.groundColor.lerpColors(DAY.hemiGround, NIGHT.hemiGround, n);
+  hemi.intensity = THREE.MathUtils.lerp(DAY.hemiIntensity, NIGHT.hemiIntensity, n);
+  fill.intensity = THREE.MathUtils.lerp(DAY.fillIntensity, NIGHT.fillIntensity, n);
+  renderer.toneMappingExposure = THREE.MathUtils.lerp(DAY.exposure, NIGHT.exposure, n);
+  lighting.night = n;
+  lighting.wetness = conditions.wetness;
+  lighting.rain = conditions.wetness;
+  for (const b of birds) b.applyLighting(lighting);
+}
 
 const input: MacawAnimInput = { mode: 'glide', effort: 0.5, bank: 0, pitch: 0, walkSpeed: 0.3, look: 0 };
 
@@ -72,6 +98,8 @@ const CAMERAS: Record<string, { pos: THREE.Vector3; target: THREE.Vector3 }> = {
   overview: { pos: new THREE.Vector3(0, 1.4, 3.2), target: new THREE.Vector3(0, 0.55, 0) },
   chase: { pos: new THREE.Vector3(0, 2.2, 4.5), target: new THREE.Vector3(0, 0.6, -0.5) },
   chaseClose: { pos: new THREE.Vector3(-0.6, 1.6, 2.6), target: new THREE.Vector3(-0.6, 0.65, 0) },
+  behindBG: { pos: new THREE.Vector3(-0.6, 1.0, 1.7), target: new THREE.Vector3(-0.6, 0.72, 0) },
+  behindScarlet: { pos: new THREE.Vector3(0.6, 1.0, 1.7), target: new THREE.Vector3(0.6, 0.72, 0) },
   front: { pos: new THREE.Vector3(0, 1.0, -3.0), target: new THREE.Vector3(0, 0.6, 0) },
   side: { pos: new THREE.Vector3(3.0, 0.9, 0.3), target: new THREE.Vector3(0.2, 0.6, 0) },
   top: { pos: new THREE.Vector3(0, 4.2, 0.3), target: new THREE.Vector3(0, 0.6, 0) },
@@ -85,6 +113,7 @@ const CAMERAS: Record<string, { pos: THREE.Vector3; target: THREE.Vector3 }> = {
 
 function setCamera(name: string): void {
   const c = CAMERAS[name] ?? CAMERAS.overview;
+  cameraEl.value = name in CAMERAS ? name : 'overview';
   const grounded = GROUNDED.has(input.mode);
   const dy = grounded ? -FLIGHT_HEIGHT + 0.15 : 0;
   camera.position.copy(c.pos).add(new THREE.Vector3(0, name.startsWith('ground') ? 0 : dy, 0));
@@ -106,8 +135,8 @@ for (const m of MODES) {
   modesEl.appendChild(b);
 }
 const slidersEl = document.getElementById('sliders')!;
-const SLIDERS: [keyof Omit<MacawAnimInput, 'mode'>, number, number][] = [['effort', 0, 1], ['bank', -1, 1], ['pitch', -1, 1], ['look', -1, 1], ['walkSpeed', 0, 1]];
-for (const [key, min, max] of SLIDERS) {
+const sliderSetters = new Map<string, (v: number) => void>();
+function addSlider(key: string, min: number, max: number, initial: number, onInput: (v: number) => void): void {
   const label = document.createElement('label');
   const value = document.createElement('span');
   const range = document.createElement('input');
@@ -115,12 +144,16 @@ for (const [key, min, max] of SLIDERS) {
   range.min = String(min);
   range.max = String(max);
   range.step = '0.01';
-  range.value = String(input[key]);
-  range.oninput = () => { input[key] = Number(range.value); value.textContent = range.value; };
-  value.textContent = range.value;
+  const show = (v: number) => { range.value = String(v); value.textContent = range.value; };
+  range.oninput = () => { show(Number(range.value)); onInput(Number(range.value)); };
+  show(initial);
+  sliderSetters.set(key, show);
   label.append(key, range, value);
   slidersEl.appendChild(label);
 }
+const SLIDERS: [keyof Omit<MacawAnimInput, 'mode'>, number, number][] = [['effort', 0, 1], ['bank', -1, 1], ['pitch', -1, 1], ['look', -1, 1], ['walkSpeed', 0, 1]];
+for (const [key, min, max] of SLIDERS) addSlider(key, min, max, input[key], (v) => { input[key] = v; });
+for (const key of ['night', 'wetness'] as const) addSlider(key, 0, 1, conditions[key], (v) => { conditions[key] = v; applyConditions(); });
 document.getElementById('squawk')!.onclick = () => birds.forEach((b) => b.squawk());
 const cameraEl = document.getElementById('camera') as HTMLSelectElement;
 for (const name of Object.keys(CAMERAS)) cameraEl.add(new Option(name, name));
@@ -132,14 +165,16 @@ function step(dt: number): void {
   birds.forEach((b, i) => b.wingTips.forEach((tip, k) => tipMarkers[i * 2 + k].position.setFromMatrixPosition(tip.matrixWorld)));
   renderer.render(scene, camera);
   const r = renderer.info.render;
-  infoEl.textContent = `frame: calls ${r.calls}  tris ${r.triangles}\nper bird: calls ${birdMeshes.length}  tris ${trianglesPerBird}\nfootOffset ${birds[0].footOffset.toFixed(3)}`;
+  infoEl.textContent = `frame: calls ${r.calls}  tris ${r.triangles}  programs ${renderer.info.programs!.length}\nper bird: calls ${birdMeshes.length}  tris ${trianglesPerBird}\nfootOffset ${birds[0].footOffset.toFixed(3)}`;
 }
 
 let last = performance.now();
+const frozen = new URLSearchParams(location.search).has('freeze'); // scripted shots then advance the animation only through macawDev.shot, so frames repeat exactly
 renderer.setAnimationLoop((now) => {
   const dt = (now - last) / 1000;
   last = now;
-  step(dt);
+  if (frozen) renderer.render(scene, camera);
+  else step(dt);
 });
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -154,6 +189,7 @@ setCamera('overview');
 Object.assign(window, {
   macawDev: {
     birds,
+    camera,
     setMode,
     setCamera,
     look(px: number, py: number, pz: number, tx: number, ty: number, tz: number) {
@@ -162,6 +198,12 @@ Object.assign(window, {
       controls.update();
     },
     set(key: keyof Omit<MacawAnimInput, 'mode'>, v: number) { input[key] = v; },
+    conditions(night: number, wetness: number) {
+      Object.assign(conditions, { night, wetness });
+      for (const key of ['night', 'wetness'] as const) sliderSetters.get(key)!(conditions[key]);
+      applyConditions();
+    },
+    programIds: () => renderer.info.programs!.map((p) => p.id),
     squawk: () => birds.forEach((b) => b.squawk()),
     showTips,
     tips: () => birds.map((b) => b.wingTips.map((t) => t.getWorldPosition(new THREE.Vector3()).toArray().map((v) => +v.toFixed(3)))),
