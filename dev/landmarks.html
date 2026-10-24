@@ -8,11 +8,15 @@
       html, body { margin: 0; height: 100%; overflow: hidden; background: #f3b77a; font: 13px system-ui, sans-serif; }
       #views { position: fixed; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 4px; max-width: 70vw; }
       #views button { border: 0; border-radius: 6px; padding: 5px 9px; background: #ffffffcc; cursor: pointer; }
+      #conditions { position: fixed; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; background: #ffffffcc; border-radius: 8px; padding: 8px; }
+      #conditions button { border: 0; border-radius: 6px; padding: 4px 8px; background: #fff; cursor: pointer; }
+      #conditions label { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
       #stats { position: fixed; bottom: 8px; left: 8px; background: #0008; color: #fff; padding: 4px 8px; border-radius: 6px; }
     </style>
   </head>
   <body>
     <div id="views"></div>
+    <div id="conditions"></div>
     <div id="stats"></div>
     <script type="module" src="./landmarks.ts"></script>
   </body>

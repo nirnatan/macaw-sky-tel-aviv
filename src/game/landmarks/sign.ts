@@ -1,8 +1,15 @@
 import * as THREE from 'three';
+import { fxMaterial } from './fx';
+import { lit, luminance, type Mood } from './mood';
 
 const FONT_URL = 'https://fonts.googleapis.com/css2?family=Varela+Round&display=swap';
 const FONT_STACK = '"Varela Round", "Arial Rounded MT Bold", "Arial Hebrew", Arial, sans-serif';
 const W = 1024, H = 512;
+const M_PER_PX = 15 / H;
+const BOARD = { halfW: (W / 2 - 20) * M_PER_PX, halfH: 205 * M_PER_PX, y: 7.5 - 225 * M_PER_PX, radius: 70 * M_PER_PX }; // the outer rounded rect drawn below
+const HALO_MARGIN = 6;
+const HALO_LUMINANCE = 1.3; // halo rim radiance at night; the board itself stays under the 1.1 bloom threshold
+const BOARD_NIGHT_GAIN = 0.2;
 
 let fontReady: Promise<void> | undefined;
 /** Loads Varela Round (Hebrew + Latin subsets). Resolves after at most ~4 s even offline; drawing then falls back. */
@@ -112,6 +119,33 @@ function draw(ctx: CanvasRenderingContext2D, s: SignStyle, found: boolean) {
 export interface Sign {
   readonly mesh: THREE.Mesh;
   setFound(found: boolean): void;
+  /** At night the board brightens a little and a halo behind it carries the bloom. */
+  applyLighting(m: Mood): void;
+}
+
+/** Soft additive glow around the board's rounded rect, so the light blooms around the text instead of over it. */
+function createHalo(): THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> {
+  const w = BOARD.halfW + HALO_MARGIN, h = BOARD.halfH + HALO_MARGIN;
+  const material = fxMaterial({
+    uniforms: { uColor: { value: new THREE.Color() }, uGlow: { value: 0 }, uHalf: { value: new THREE.Vector2(BOARD.halfW, BOARD.halfH) }, uRadius: { value: BOARD.radius } },
+    vertexShader: /* glsl */ `
+      varying vec2 vP;
+      void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor; uniform float uGlow; uniform vec2 uHalf; uniform float uRadius;
+      varying vec2 vP;
+      void main() {
+        vec2 q = abs(vP) - uHalf + uRadius;
+        float d = max(length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - uRadius, 0.0);
+        float a = (exp(-d * 1.4) * 0.75 + exp(-d * 0.45) * 0.25) * smoothstep(${HALO_MARGIN.toFixed(1)}, ${(HALO_MARGIN * 0.6).toFixed(1)}, d);
+        gl_FragColor = vec4(uColor * a * uGlow, 1.0);
+      }`,
+  });
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(w * 2, h * 2), material);
+  halo.position.set(0, BOARD.y, -0.3);
+  halo.renderOrder = 4; // after the beam, before the board
+  halo.visible = false;
+  return halo;
 }
 
 /** Floating name board, 30 x 15 m at scale 1. The bottom tip of its pointer sits at the mesh origin's y - 7.5. */
@@ -128,10 +162,23 @@ export function createSign(style: SignStyle): Sign {
   redraw();
   void loadRoundFont().then(redraw);
 
-    const material = new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.5, transparent: true, side: THREE.DoubleSide, toneMapped: false, fog: false });
+  const material = new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.5, transparent: true, side: THREE.DoubleSide, toneMapped: false, fog: false });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(30, 15), material);
+  const halo = createHalo();
+  mesh.add(halo);
+  const haloColor = () => {
+    const c = halo.material.uniforms.uColor.value as THREE.Color;
+    c.set(found ? FOUND_GREEN : style.accent);
+    c.multiplyScalar(HALO_LUMINANCE / luminance(c));
+  };
+  haloColor();
   return {
     mesh,
-    setFound(f) { found = f; redraw(); },
+    setFound(f) { found = f; redraw(); haloColor(); },
+    applyLighting(m) {
+      material.color.setScalar(1 + BOARD_NIGHT_GAIN * m.glow);
+      halo.material.uniforms.uGlow.value = m.glow;
+      halo.visible = lit(m);
+    },
   };
 }
