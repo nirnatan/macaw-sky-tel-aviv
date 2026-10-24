@@ -11,6 +11,7 @@ const vec3 = () => ({ value: new Float32Array(3) });
 
 export const atmosphereUniforms = {
   uAtmoSunDir: vec3(), // the true sun, never the moon
+  uAtmoMoonDir: vec3(),
   uAtmoSkyZenith: vec3(),
   uAtmoSkyMidAway: vec3(),
   uAtmoSkyMidSun: vec3(),

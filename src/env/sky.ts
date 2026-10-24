@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { ATMOSPHERE_GLSL, atmosphereUniforms } from './atmosphere';
 
-// Streaky altocumulus on a plane above the camera, lit from below by the low sun. Shared with the sea's reflection.
-// Overcast widens the coverage and flattens the lighting into a soft gray-blue ceiling.
+// Streaky altocumulus on a plane above the camera, lit from below by the low sun, or by the moon at night.
+// Shared with the sea's reflection. Overcast widens the coverage and flattens the lighting into a soft gray-blue ceiling.
 export const CLOUDS_GLSL = /* glsl */ `
 uniform sampler2D uCloudNoise;
+uniform vec3 uAtmoMoonDir;
 uniform vec3 uAtmoCloudLit;
 uniform vec3 uAtmoCloudShade;
 #define CLOUD_LIT uAtmoCloudLit
@@ -23,11 +24,12 @@ vec4 clouds(vec3 dir, float t) {
   float overcast = ATMO_OVERCAST;
   float density = mix(smoothstep(0.5, 0.74, n), smoothstep(0.15, 0.5, n), overcast);
   density = max(density, overcast * overcast * 0.7); // flat stratus floor under heavy cover
-  vec2 toSun = CLOUD_ROT * (SUN_DIR.xz / max(length(SUN_DIR.xz), 1e-3)) * CLOUD_STRETCH * 0.35;
-  float towardSun = texture(uCloudNoise, uv + toSun).r;
-  float lit = clamp(0.6 + (n - towardSun) * 4.0, 0.0, 1.0);
+  vec3 lightDir = normalize(mix(SUN_DIR, uAtmoMoonDir, smoothstep(0.15, 0.55, ATMO_NIGHT))); // moonlit once the sun side is gone
+  vec2 toLight = CLOUD_ROT * (lightDir.xz / max(length(lightDir.xz), 1e-3)) * CLOUD_STRETCH * 0.35;
+  float towardLight = texture(uCloudNoise, uv + toLight).r;
+  float lit = clamp(0.6 + (n - towardLight) * 4.0, 0.0, 1.0);
   lit = mix(lit, 0.35, overcast * 0.7);
-  float mu = max(dot(dir, SUN_DIR), 0.0);
+  float mu = max(dot(dir, lightDir), 0.0);
   vec3 col = mix(CLOUD_SHADE, CLOUD_LIT, lit);
   col += HAZE_GLOW * pow(mu, 5.0) * (1.25 - density) * 1.6 * (1.0 - overcast);
   col = mix(atmoHaze(dir), col, fade);
@@ -48,7 +50,6 @@ uniform float uDecor;
 uniform float uStarDensity;
 uniform vec3 uSunDisk;
 uniform vec3 uGround;
-uniform vec3 uMoonDir;
 varying vec3 vDir;
 ${ATMOSPHERE_GLSL}
 ${CLOUDS_GLSL}
@@ -78,8 +79,8 @@ vec3 stars(vec3 dir, float t) {
   return tint * core * present * (0.4 + h.y * 0.6) * twinkle * fade * 1.1;
 }
 
-vec3 spectrum(float x) { // 0 red .. 1 violet
-  return clamp(0.5 + 0.5 * cos(6.2832 * (x * 0.78 + vec3(0.0, 0.33, 0.67))), 0.0, 1.0);
+vec3 spectrum(float x) { // 0 red, 0.15 orange, 0.25 yellow, 0.5 green, 0.75 blue, 1 violet
+  return clamp(0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) - x * 0.78)), 0.0, 1.0);
 }
 
 vec3 rainbow(vec3 dir) {
@@ -108,9 +109,9 @@ void main() {
   float r = acos(clamp(dot(dir, SUN_DIR), -1.0, 1.0)) / SUN_RADIUS;
   float disk = 1.0 - smoothstep(0.85, 1.0, r);
   float limb = 0.55 + 0.45 * sqrt(max(1.0 - r * r, 0.0));
-  col += uSunDisk * disk * limb * cover * (1.0 - ATMO_NIGHT) * (1.0 - ATMO_OVERCAST);
+  col += uSunDisk * disk * limb * cover * (1.0 - ATMO_NIGHT) * (1.0 - ATMO_OVERCAST) * uDecor;
 
-  float mr = acos(clamp(dot(dir, uMoonDir), -1.0, 1.0)) / MOON_RADIUS;
+  float mr = acos(clamp(dot(dir, uAtmoMoonDir), -1.0, 1.0)) / MOON_RADIUS;
   float mdisk = 1.0 - smoothstep(0.9, 1.0, mr);
   float mlimb = 0.72 + 0.28 * sqrt(max(1.0 - mr * mr, 0.0));
   float mhalo = exp(-mr * 1.1) * 0.08;
@@ -127,7 +128,6 @@ export function createSky(noise: THREE.Texture) {
     uStarDensity: { value: 0.3 },
     uSunDisk: { value: new Float32Array(3) },
     uGround: { value: new Float32Array(3) },
-    uMoonDir: { value: new Float32Array(3) },
     uCloudNoise: { value: noise },
   };
   const skyMaterial = (decor: number) => new THREE.ShaderMaterial({
@@ -146,7 +146,7 @@ export function createSky(noise: THREE.Texture) {
   mesh.renderOrder = 1000; // after opaque geometry so early-z rejects covered sky pixels
 
   const envScene = new THREE.Scene();
-  envScene.add(new THREE.Mesh(geometry, skyMaterial(0))); // no stars, moon or rainbow in reflections
+  envScene.add(new THREE.Mesh(geometry, skyMaterial(0))); // no sun disk, stars, moon or rainbow in reflections
 
   return {
     mesh,

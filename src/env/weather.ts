@@ -26,6 +26,7 @@ export function createWeather(initial: Conditions) {
   let targetTime: TimeOfDay = initial.time;
   let targetRain = initial.rain;
   const from = cloneRow(PRESETS[targetTime]);
+  const to = cloneRow(PRESETS[targetTime]);
   const blended = cloneRow(PRESETS[targetTime]);
   const row = cloneRow(PRESETS[targetTime]); // blended row with the overcast modifiers applied
   let blendT = 1;
@@ -38,8 +39,16 @@ export function createWeather(initial: Conditions) {
   const grayTarget = new THREE.Color(), keyGray = new THREE.Color();
   const state = { row, sunDir, moonDir, keyDir, keyIntensity: 0, shadowFade: 1, rain, overcast, wetness, rainbow: 0 };
 
-  function applyOvercast() {
+  // The sun's side of the sky (glow, disk, warm horizon) goes in the first half of a dusk blend and comes back in the
+  // second half of a dawn one, so the hidden sun can be moved to the next day's azimuth while nothing shows where it is.
+  function deriveRow(sunSide: number) {
     copyRow(row, blended);
+    row.skyMidSun.lerp(row.skyMidAway, 1 - sunSide);
+    row.skyHorizonSun.lerp(row.skyHorizonAway, 1 - sunSide);
+    row.hazeSun.lerp(row.hazeAway, 1 - sunSide);
+    row.skyGlow.multiplyScalar(sunSide);
+    row.hazeGlow.multiplyScalar(sunSide);
+    row.sunDisk.multiplyScalar(sunSide);
     const gray = THREE.MathUtils.clamp(luminance(blended.skyMidAway) / OVERCAST_GRAY_LUMINANCE, 0.03, 1.3);
     grayTarget.copy(OVERCAST_GRAY).multiplyScalar(gray);
     for (const k of SKY_BASE_KEYS) row[k].lerp(grayTarget, 0.6 * overcast);
@@ -59,14 +68,14 @@ export function createWeather(initial: Conditions) {
     if (keyDir.y < MIN_KEY_ELEVATION) { keyDir.y = MIN_KEY_ELEVATION; keyDir.normalize(); }
     const envelope = Math.abs(1 - 2 * w); // dims to zero where the direction swaps
     state.keyIntensity = blended.keyIntensity * envelope * (1 - 0.65 * overcast);
-    state.shadowFade = envelope * (1 - 0.8 * overcast);
+    state.shadowFade = blended.shadowIntensity * envelope * (1 - 0.8 * overcast);
   }
 
   function step(dt: number): StepInfo {
     const wasBlending = blendT < 1;
     if (wasBlending) {
       blendT = Math.min(1, blendT + dt / TIME_BLEND_SECONDS);
-      blendRow(blended, from, PRESETS[targetTime], smoothstep(0, 1, blendT));
+      blendRow(blended, from, to, smoothstep(0, 1, blendT));
     }
 
     rain = approach(rain, targetRain ? 1 : 0, targetRain ? dt / RAIN_IN : dt / RAIN_OUT);
@@ -82,10 +91,11 @@ export function createWeather(initial: Conditions) {
       rainbowLevel = approach(rainbowLevel, 0, dt / RAINBOW_CANCEL);
     }
 
-    applyOvercast();
+    const sunSide = smoothstep(0.5, 1, blended.sunUp);
+    deriveRow(sunSide);
     applyKey();
     state.rain = rain; state.overcast = overcast; state.wetness = wetness;
-    state.rainbow = rainbowLevel * blended.sunUp;
+    state.rainbow = rainbowLevel * sunSide;
     return { blending: wasBlending, blendEnded: wasBlending && blendT >= 1 };
   }
 
@@ -95,16 +105,27 @@ export function createWeather(initial: Conditions) {
     setConditions(c: Conditions, instant: boolean) {
       if (c.time !== targetTime) {
         targetTime = c.time;
-        if (instant) { copyRow(blended, PRESETS[targetTime]); blendT = 1; }
-        else { copyRow(from, blended); blendT = 0; } // re-targets from the current look, no jump
+        copyRow(from, blended); // re-targets from the current look, no jump
+        copyRow(to, PRESETS[targetTime]);
+        blendT = 0;
+        // The sun sets where it is and rises where the day wants it, instead of sweeping along the horizon.
+        // Both moves happen while sunSide is 0 (see deriveRow), so neither shows.
+        if (to.sunUp < 0.5) to.sunAz = from.sunAz;
+        else if (from.sunUp < 0.5) from.sunAz = to.sunAz;
       }
       if (c.rain !== targetRain) {
         targetRain = c.rain;
         if (targetRain) rainbowPhase = 'idle';
         else if (blended.sunUp > 0.5) rainbowPhase = 'armed';
-        if (instant) { rain = overcast = wetness = targetRain ? 1 : 0; rainbowPhase = 'idle'; rainbowLevel = 0; }
       }
-      if (instant) step(0);
+      if (instant) { // the steady state of the target, whatever was in flight
+        copyRow(blended, PRESETS[targetTime]);
+        blendT = 1;
+        rain = overcast = wetness = targetRain ? 1 : 0;
+        rainbowPhase = 'idle';
+        rainbowLevel = 0;
+        step(0);
+      }
     },
     step,
   };

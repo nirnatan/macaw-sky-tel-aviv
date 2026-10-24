@@ -12,6 +12,7 @@ export interface Row {
   keyFromMoon: number; // 0: the sun is the key light, 1: the moon
   sunLight: THREE.Color; // key light color
   keyIntensity: number;
+  shadowIntensity: number; // light.shadow.intensity at steady state: moon shadows stay faint
   sunDisk: THREE.Color;
   skyZenith: THREE.Color;
   skyMidAway: THREE.Color;
@@ -49,7 +50,7 @@ const rgb = (r: number, g: number, b: number) => new THREE.Color(r, g, b);
 export const PRESETS: Record<TimeOfDay, Row> = {
   sunrise: {
     sunAz: 100, sunEl: 6, moonAz: 135, moonEl: 35, keyFromMoon: 0,
-    sunLight: srgb('#ffb070'), keyIntensity: 3.6,
+    sunLight: srgb('#ffb070'), keyIntensity: 3.6, shadowIntensity: 1,
     sunDisk: srgb('#ffd090', 20),
     skyZenith: srgb('#4a78b8'),
     skyMidAway: srgb('#b9c3e0'),
@@ -71,7 +72,7 @@ export const PRESETS: Record<TimeOfDay, Row> = {
   },
   noon: {
     sunAz: 180, sunEl: 58, moonAz: 135, moonEl: 35, keyFromMoon: 0, // never above 60: atmoSunSide and the shadow box assume a slanted sun
-    sunLight: srgb('#fff4e6'), keyIntensity: 3.4,
+    sunLight: srgb('#fff4e6'), keyIntensity: 3.4, shadowIntensity: 1,
     sunDisk: srgb('#ffffff', 24),
     skyZenith: srgb('#2f6fd0'),
     skyMidAway: srgb('#6fa3e6'),
@@ -93,7 +94,7 @@ export const PRESETS: Record<TimeOfDay, Row> = {
   },
   sunset: {
     sunAz: 255, sunEl: 8.5, moonAz: 135, moonEl: 35, keyFromMoon: 0,
-    sunLight: srgb('#ff8f45'), keyIntensity: 4.2,
+    sunLight: srgb('#ff8f45'), keyIntensity: 4.2, shadowIntensity: 1,
     sunDisk: srgb('#ffb060', 22),
     skyZenith: srgb('#35609a'),
     skyMidAway: srgb('#a3b0d0'),
@@ -115,17 +116,17 @@ export const PRESETS: Record<TimeOfDay, Row> = {
   },
   night: {
     sunAz: 255, sunEl: -8, moonAz: 135, moonEl: 35, keyFromMoon: 1,
-    sunLight: srgb('#bcd0ff'), keyIntensity: 0.85,
+    sunLight: srgb('#bcd0ff'), keyIntensity: 0.85, shadowIntensity: 0.45,
     sunDisk: srgb('#ffb060', 22),
     skyZenith: srgb('#0a1538'),
     skyMidAway: srgb('#15264f'),
-    skyMidSun: srgb('#1a2d58'),
+    skyMidSun: srgb('#15264f'),
     skyHorizonAway: srgb('#2a3f6c'),
-    skyHorizonSun: srgb('#34476e'),
-    skyGlow: srgb('#3a4a80', 0.25),
+    skyHorizonSun: srgb('#2a3f6c'),
+    skyGlow: rgb(0, 0, 0),
     hazeAway: srgb('#1e2c4c', 0.8),
-    hazeSun: srgb('#243356', 0.8),
-    hazeGlow: srgb('#2a3a60', 0.4),
+    hazeSun: srgb('#1e2c4c', 0.8),
+    hazeGlow: rgb(0, 0, 0),
     cloudLit: srgb('#5a6a9a', 0.9),
     cloudShade: srgb('#1c2440', 0.9),
     ground: srgb('#1a1c28', 0.6),

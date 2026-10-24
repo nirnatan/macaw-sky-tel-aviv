@@ -44,6 +44,7 @@ const PRESETS: Record<string, Preset> = {
   overview: { position: [COAST_X + 900, 300, 1500], target: [COAST_X - 200, 0, -700] },
   skim: { position: [COAST_X - 150, 3, 150], target: [COAST_X - 1100, 2, 400], drift: [-22, 0, 6] },
   north: { position: [COAST_X + 300, 60, 500], target: [COAST_X + 300, 160, -900] },
+  south: { position: [COAST_X + 300, 60, -500], target: [COAST_X + 300, 160, 900] },
   moon: { position: [COAST_X + 200, 60, 200], target: [COAST_X + 900, 550, 900] },
 };
 

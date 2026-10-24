@@ -43,6 +43,7 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
   function applyWeather() {
     const row = w.row;
     w.sunDir.toArray(a.uAtmoSunDir.value);
+    w.moonDir.toArray(a.uAtmoMoonDir.value);
     row.skyZenith.toArray(a.uAtmoSkyZenith.value);
     row.skyMidAway.toArray(a.uAtmoSkyMidAway.value);
     row.skyMidSun.toArray(a.uAtmoSkyMidSun.value);
@@ -59,7 +60,6 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
 
     row.sunDisk.toArray(sky.uniforms.uSunDisk.value);
     row.ground.toArray(sky.uniforms.uGround.value);
-    w.moonDir.toArray(sky.uniforms.uMoonDir.value);
 
     const keyRadiance = lighting.sunColor.copy(row.sunLight).multiplyScalar(w.keyIntensity);
     water.uniforms.uSunRadiance.value.copy(keyRadiance);
@@ -143,10 +143,11 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
   return {
     lighting,
     setConditions(c, opts) {
+      const instant = opts?.instant ?? false;
       const t = weather.target;
-      if (c.time === t.time && c.rain === t.rain) return;
-      weather.setConditions(c, opts?.instant ?? false);
-      if (opts?.instant) { applyWeather(); bake(); }
+      if (!instant && c.time === t.time && c.rain === t.rain) return;
+      weather.setConditions(c, instant);
+      if (instant) { applyWeather(); bake(); }
     },
     update(dt, focus) {
       time += dt;
