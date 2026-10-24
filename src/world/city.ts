@@ -11,7 +11,8 @@ import { createCityUniforms } from './shaders';
 import { buildTrees } from './trees';
 
 const CHUNK = 900;
-/** Per-tier knobs; everything else stays identical so the city reads the same on every device. */
+/** Per-tier knobs; everything else stays identical so the city reads the same on every device. The creation tier's
+ *  densities also decide how many trees, rooftop units and fringe boxes exist, so a later upgrade cannot exceed them. */
 const QUALITY: Record<Quality, { treeDensity: number; treeRange: number; clutter: number; clutterRange: number; fringe: number; lampMinHw: number }> = {
   low: { treeDensity: 0.35, treeRange: 1000, clutter: 0.35, clutterRange: 450, fringe: 0.4, lampMinHw: 5.5 }, // arterials, ~9k lamps
   medium: { treeDensity: 0.65, treeRange: 1600, clutter: 0.7, clutterRange: 700, fringe: 0.7, lampMinHw: 3.9 }, // + tertiary, ~17k
@@ -32,11 +33,12 @@ export const createCity: CreateCity = (data, opts): City => {
   const started = performance.now();
   const uniforms = createCityUniforms();
   const grid = new ChunkGrid(CHUNK);
-  const buildings = buildBuildings(data, grid, uniforms);
+  const built = QUALITY[opts.quality];
+  const buildings = buildBuildings(data, grid, uniforms, built.clutter);
   const physics = new CityPhysics(data, buildings.footprints);
   const flats = buildFlats(data, grid, uniforms);
-  const trees = buildTrees(data, grid, physics);
-  const fringe = buildFringe(data);
+  const trees = buildTrees(data, grid, physics, built.treeDensity);
+  const fringe = buildFringe(data, built.fringe);
   const lamps = buildLamps(flats.lampStations, uniforms);
 
   const group = new THREE.Group();
@@ -46,7 +48,7 @@ export const createCity: CreateCity = (data, opts): City => {
   for (let i = 0; i < grid.count; i++) {
     const near = trees.byChunk[i];
     const clutter = new THREE.Group();
-    for (const m of [buildings.heaters[i], buildings.acUnits[i]]) if (m) clutter.add(m);
+    for (const c of [buildings.heaters[i], buildings.acUnits[i]]) if (c) clutter.add(c.mesh);
     near.add(clutter);
     near.userData.clutter = clutter;
     nearGroups.push(near);
@@ -65,7 +67,7 @@ export const createCity: CreateCity = (data, opts): City => {
     tier = QUALITY[q];
     trees.setDensity(tier.treeDensity);
     fringe.setFraction(tier.fringe);
-    for (const list of [buildings.heaters, buildings.acUnits]) for (const m of list) if (m) m.count = Math.round(m.instanceMatrix.count * tier.clutter);
+    for (const list of [buildings.heaters, buildings.acUnits]) for (const c of list) if (c) c.mesh.count = Math.min(c.mesh.instanceMatrix.count, Math.round(c.full * tier.clutter));
     lamps.setMinHalfWidth(tier.lampMinHw);
     uniforms.uPoolMinHw.value = tier.lampMinHw;
   };

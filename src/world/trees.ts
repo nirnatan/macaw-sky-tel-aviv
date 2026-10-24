@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { AreaKind, CityData, RoadKind } from './data';
-import { ChunkGrid, hash2, ringArea, rng, samplePointsInPolygon, walkPolyline } from './geom';
+import { ChunkGrid, hash2, releaseAfterUpload, ringArea, rng, samplePointsInPolygon, walkPolyline } from './geom';
 import type { CityPhysics } from './physics';
 import { after, srgb } from './shaders';
 
@@ -39,7 +39,7 @@ export interface TreeLayer {
   setWind(strength: number): void;
 }
 
-export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics): TreeLayer {
+export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics, keep: number): TreeLayer {
   const rand = rng(11);
   const lists: Record<Species, number[][]> = { ficus: [], palm: [], cypress: [] };
   for (const s of SPECIES) lists[s] = Array.from({ length: grid.count }, () => []);
@@ -83,7 +83,7 @@ export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics
 
   const time = { value: 0 };
   const byChunk = Array.from({ length: grid.count }, () => new THREE.Group());
-  const instanced: { mesh: THREE.InstancedMesh; max: number }[] = [];
+  const instanced: { mesh: THREE.InstancedMesh; full: number }[] = [];
   const materials: THREE.MeshStandardMaterial[] = [];
   const sways: { uniform: { value: number }; calm: number }[] = [];
   for (const species of SPECIES) {
@@ -94,13 +94,14 @@ export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics
     materials.push(material);
     sways.push({ uniform: sway, calm: spec.sway });
     lists[species].forEach((list, chunk) => {
-      const n = list.length / 4;
-      if (!n) return;
-      const order = Array.from({ length: n }, (_, i) => i);
-      for (let i = n - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-      const mesh = new THREE.InstancedMesh(geometry, material, n);
+      const full = list.length / 4;
+      if (!full) return;
+      const order = Array.from({ length: full }, (_, i) => i);
+      for (let i = full - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+      const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, Math.ceil(full * keep)));
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
-      order.forEach((src, dst) => {
+      for (let dst = 0; dst < mesh.count; dst++) {
+        const src = order[dst];
         const x = list[4 * src], z = list[4 * src + 1], k = list[4 * src + 2];
         p.set(x, 0, z);
         q.setFromAxisAngle(up, list[4 * src + 3]);
@@ -108,19 +109,20 @@ export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics
         mesh.setMatrixAt(dst, m.compose(p, q, s));
         const warm = hash2(x, z, 2);
         mesh.setColorAt(dst, c.setRGB(0.9 + 0.2 * warm, 0.92 + 0.12 * hash2(x, z, 3), 0.9 + 0.1 * (1 - warm)));
-      });
+      }
       mesh.instanceMatrix.needsUpdate = true;
       mesh.castShadow = spec.castShadow;
       mesh.receiveShadow = false;
       mesh.matrixAutoUpdate = false;
       mesh.computeBoundingSphere();
+      releaseAfterUpload(mesh.instanceMatrix, mesh.instanceColor!);
       byChunk[chunk].add(mesh);
-      instanced.push({ mesh, max: n });
+      instanced.push({ mesh, full });
     });
   }
   return {
     byChunk, time, materials,
-    setDensity(fraction) { for (const t of instanced) t.mesh.count = Math.max(1, Math.round(t.max * fraction)); },
+    setDensity(fraction) { for (const t of instanced) t.mesh.count = Math.min(t.mesh.instanceMatrix.count, Math.max(1, Math.round(t.full * fraction))); },
     setWind(strength) { for (const s of sways) s.uniform.value = s.calm * strength; },
   };
 }
