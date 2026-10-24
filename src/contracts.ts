@@ -219,7 +219,7 @@ export interface UI {
 }
 export type CreateUI = (opts: { root: HTMLElement; data: CityData; input: Input }) => UI;
 
-// ---------- Landmarks: the two special places, golden rings, ambient life (src/game/landmarks/) ----------
+// ---------- Landmarks: the special places in src/places.ts, golden rings, ambient life (src/game/landmarks/) ----------
 export interface LandingSpot { id: TargetId; nameHe: string; nameEn: string; position: THREE.Vector3; radius: number }
 export interface Landmarks {
   readonly group: THREE.Group;
