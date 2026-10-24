@@ -13,14 +13,27 @@ import { createUI } from './ui';
 import { createCity } from './world/city';
 import { loadCityData } from './world/data';
 import { project } from './geo';
+import { DynamicResolution } from './dynamic-resolution';
 
 const START = project(32.0835, 34.7674); // on the sand at Gordon beach
 const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
 
+const IS_PHONE = Math.min(screen.width, screen.height) < 500;
+
 function detectQuality(): Quality {
-  const touch = navigator.maxTouchPoints > 1;
-  const small = Math.min(screen.width, screen.height) < 500;
-  return small ? 'low' : touch ? 'medium' : 'high';
+  return IS_PHONE ? 'low' : navigator.maxTouchPoints > 1 ? 'medium' : 'high';
+}
+
+// iOS drops WebGL contexts in the background; progress lives in localStorage, so a reload is the clean way back.
+function onContextLost(canvas: HTMLCanvasElement) {
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    const veil = document.createElement('button');
+    veil.textContent = '🦜 לחצו כדי להמשיך לעוף · Tap to keep flying';
+    veil.style.cssText = 'position:fixed;inset:0;z-index:100;border:0;font:700 22px system-ui,sans-serif;color:#fff3dc;background:radial-gradient(circle at 50% 60%,#f7a04b,#2a1a12);';
+    veil.addEventListener('click', () => location.reload());
+    document.body.appendChild(veil);
+  });
 }
 
 function foundKey(player: PlayerName) { return `macaw-found-${player}`; }
@@ -40,6 +53,7 @@ async function boot() {
   renderer.shadowMap.enabled = true; // env owns shadow type and pixel ratio per quality tier
   renderer.domElement.className = 'game-canvas';
   root.appendChild(renderer.domElement);
+  onContextLost(renderer.domElement);
 
   const input = createInput(root);
   const data = await loadCityData();
@@ -53,6 +67,8 @@ async function boot() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 30000);
   const env = createEnvironment({ renderer, scene, camera, sea: data.sea, quality });
+  const resolution = new DynamicResolution(IS_PHONE ? 1.5 : env.maxPixelRatio, env.maxPixelRatio); // phones start sharp but not at full 3x
+  env.setPixelRatio(resolution.ratio);
   env.setConditions(ui.settings, { instant: true }); // the first frame is already the saved time of day
   ui.setLoading(0.45);
   await nextFrame();
@@ -136,6 +152,8 @@ async function boot() {
   };
   function setQualityEverywhere(q: Quality) {
     env.setQuality(q); city.setQuality(q); flames.setQuality(q); rain.setQuality(q);
+    resolution.setMax(env.maxPixelRatio);
+    env.setPixelRatio(resolution.ratio);
   }
   ui.onSettings(applySettings);
 
@@ -212,7 +230,7 @@ async function boot() {
       sunDirection: new THREE.Vector3(0, 1, 0), sunColor: new THREE.Color(1, 1, 1), hazeColor: new THREE.Color(0.5, 0.5, 0.5),
       night: 1, morning: 1, rain: 1, wetness: 1, overcast: 1, rainbow: 1,
     };
-    const birds = (['blueGold', 'scarlet'] as const).map(getMacaw);
+    const birds = quality === 'low' ? [macaw] : (['blueGold', 'scarlet'] as const).map(getMacaw); // phones skip the second species' atlas until it is picked
     for (const b of birds) { if (!b.object.parent) scene.add(b.object); b.applyLighting(allOn); }
     city.applyLighting(allOn);
     landmarks.applyLighting(allOn);
@@ -248,7 +266,7 @@ async function boot() {
   }
 
   const timer = new THREE.Timer();
-  let fpsAccum = 0, fpsFrames = 0, slowSeconds = 0, programsChecked = false, programsAfterWarmUp = 0;
+  let lastFrameAt = performance.now(), slowAtFloorMs = 0, programsChecked = false, programsAfterWarmUp = 0;
 
   function frame() {
     requestAnimationFrame(frame);
@@ -328,18 +346,17 @@ async function boot() {
       if (n !== programsAfterWarmUp) console.error(`shaders compiled during play: ${programsAfterWarmUp} after warm-up, ${n} after a minute`);
     }
 
-    if (ui.settings.quality === 'auto' && phase === 'playing') {
-      fpsAccum += dt; fpsFrames++;
-      if (fpsAccum > 1) {
-        const fps = fpsFrames / fpsAccum;
-        slowSeconds = fps < 40 ? slowSeconds + 1 : 0;
-        if (slowSeconds >= 4 && quality !== 'low') {
-          quality = quality === 'high' ? 'medium' : 'low';
-          setQualityEverywhere(quality);
-          env.setSize(innerWidth, innerHeight);
-          slowSeconds = 0;
-        }
-        fpsAccum = 0; fpsFrames = 0;
+    const now = performance.now();
+    const frameMs = now - lastFrameAt;
+    lastFrameAt = now;
+    if (phase === 'playing' && frameMs < 500) { // longer gaps are a hidden tab, not a slow frame
+      const ratio = resolution.sample(frameMs);
+      if (ratio !== null) env.setPixelRatio(ratio);
+      slowAtFloorMs = resolution.exhausted && frameMs > 25 ? slowAtFloorMs + frameMs : Math.max(0, slowAtFloorMs - frameMs);
+      if (ui.settings.quality === 'auto' && slowAtFloorMs > 4000 && quality !== 'low') { // resolution alone could not keep up
+        quality = quality === 'high' ? 'medium' : 'low';
+        setQualityEverywhere(quality);
+        slowAtFloorMs = 0;
       }
     }
   }
