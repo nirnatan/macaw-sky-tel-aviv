@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import type { Surface } from '../../contracts';
-import type { CityData } from '../../world/data';
+import type { CityData, Target } from '../../world/data';
+import { createBulbs, type Bulb, type Bulbs } from './bulbs';
 import { ATLAS, createGanAtlas, WALL_COLOR } from './gan-art';
 import { fxMaterial } from './fx';
-import { lit, type Mood } from './mood';
-import { at, backlitFabric, Parts, seeded, soak } from './parts';
+import { lit } from './mood';
+import { at, backlitFabric, Parts, soak } from './parts';
+import type { Decor, Site } from './styles';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -26,15 +27,14 @@ const FAIRY_COLORS = ['#ffd27a', '#ff8fab', '#8fe3cf', '#a0c4ff', '#ffe9a8', '#c
 const WINDOW_TINT = new THREE.Color('#ffc46b').multiplyScalar(2.4); // warm lamplight, over the 1.1 bloom threshold
 const POOL_TINT = new THREE.Color('#ffb15a').multiplyScalar(0.45);
 
-export const GAN_ROOF_CENTER = new THREE.Vector3((HOUSE.x0 + HOUSE.x1) / 2, HOUSE.roof, (HOUSE.z0 + HOUSE.z1) / 2);
-export const GAN_ROOF_RADIUS = 7.5;
-export const GAN_PAD_RADIUS = 4.4;
+const ROOF_CENTER = new THREE.Vector3((HOUSE.x0 + HOUSE.x1) / 2, HOUSE.roof, (HOUSE.z0 + HOUSE.z1) / 2);
+const ROOF_RADIUS = 7.5;
+const PAD_RADIUS = 4.4;
 
 const PASTELS = ['#ff8fab', '#ffd166', '#8fe3cf', '#a0c4ff', '#cdb4db'];
 
 /** Aligns the compound with the nearest street and pushes it back so the front fence sits on the sidewalk. */
-function ganPlacement(data: CityData): { center: THREE.Vector3; yaw: number } {
-  const { x, z } = data.targets.gan;
+function ganPlacement(data: CityData, { x, z }: Target): { center: THREE.Vector3; yaw: number } {
   let best = { d: 40, nx: 0, nz: 1, half: 0 };
   for (const road of data.roads) {
     if (road.kind === 'footway' || road.kind === 'rail' || road.kind === 'service') continue;
@@ -277,20 +277,15 @@ function windowGlow(windows: WindowPose[]): THREE.Mesh<THREE.BufferGeometry, THR
 }
 
 /** Fairy lights along the fence's top rail and the sail edges, plus the lamp by the door. */
-function fairyLights(): THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> {
-  const rand = seeded(23);
-  const pos: number[] = [], color: number[] = [], bulb: number[] = [];
+function fairyLights(): Bulbs {
+  const bulbs: Bulb[] = [];
   const palette = FAIRY_COLORS.map((c) => new THREE.Color(c));
-  const add = (p: THREE.Vector3, c: THREE.Color, size: number) => {
-    pos.push(p.x, p.y, p.z);
-    color.push(c.r, c.g, c.b);
-    bulb.push(size, rand() * 6.28);
-  };
   const string = (a: THREE.Vector3, b: THREE.Vector3, gap: number, droop: number) => {
     const n = Math.max(1, Math.round(a.distanceTo(b) / gap));
     for (let i = 0; i <= n; i++) {
       const t = i / n;
-      add(a.clone().lerp(b, t).add(V(0, -droop * Math.abs(Math.sin(t * n * Math.PI * 0.5)), 0)), palette[bulb.length / 2 % palette.length], 0.42);
+      const position = a.clone().lerp(b, t).add(V(0, -droop * Math.abs(Math.sin(t * n * Math.PI * 0.5)), 0));
+      bulbs.push({ position, color: palette[bulbs.length % palette.length], size: 0.42 });
     }
   };
   const { halfX: hx, halfZ: hz } = YARD;
@@ -301,49 +296,12 @@ function fairyLights(): THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>
   string(V(hx, y, -hz), V(-hx, y, -hz), 0.55, 0.05);
   string(V(-hx, y, -hz), V(-hx, y, hz), 0.55, 0.05);
   for (const [corners] of SAILS) corners.forEach((c, i) => string(c, corners[(i + 1) % corners.length], 0.6, 0));
-  add(V(-0.85, 2.05, HOUSE.z1 + 0.2), new THREE.Color('#ffe2a8'), 0.9);
-
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('aColor', new THREE.Float32BufferAttribute(color, 3));
-  g.setAttribute('aBulb', new THREE.Float32BufferAttribute(bulb, 2));
-  const material = fxMaterial({
-    uniforms: { uTime: { value: 0 }, uScale: { value: 600 }, uGlow: { value: 0 } },
-    vertexShader: /* glsl */ `
-      attribute vec3 aColor; attribute vec2 aBulb; // size in meters, twinkle phase
-      uniform float uTime; uniform float uScale; uniform float uGlow;
-      varying vec3 vColor; varying float vAlpha;
-      void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mv;
-        gl_PointSize = max(2.0, uScale * aBulb.x / -mv.z);
-        vAlpha = uGlow * (0.7 + 0.3 * sin(uTime * 2.3 + aBulb.y));
-        vColor = aColor;
-      }`,
-    fragmentShader: /* glsl */ `
-      varying vec3 vColor; varying float vAlpha;
-      void main() {
-        vec2 d = gl_PointCoord - 0.5;
-        float r2 = dot(d, d);
-        vec3 c = vColor * exp(-r2 * 14.0) * 0.5 + mix(vColor, vec3(1.0), 0.6) * exp(-r2 * 70.0);
-        gl_FragColor = vec4(c * vAlpha * 2.2, 1.0);
-      }`,
-  });
-  const points = new THREE.Points(g, material);
-  points.renderOrder = 2;
-  return points;
+  bulbs.push({ position: V(-0.85, 2.05, HOUSE.z1 + 0.2), color: new THREE.Color('#ffe2a8'), size: 0.9 });
+  return createBulbs(bulbs, 23);
 }
 
-export interface Gan {
-  readonly group: THREE.Group;
-  surfaceAt(x: number, z: number, belowY: number): Surface | null;
-  applyLighting(m: Mood): void;
-  /** `pointScale` turns the fairy lights' size in meters into pixels. */
-  update(time: number, pointScale: number): void;
-}
-
-export function createGan(data: CityData, castShadow: boolean): Gan {
-  const { center, yaw } = ganPlacement(data);
+export function createGan(data: CityData, target: Target, castShadow: boolean): { site: Site; decor: Decor } {
+  const { center, yaw } = ganPlacement(data, target);
   const p = new Parts(ATLAS.blank);
   const windows: WindowPose[] = [];
   p.box(YARD.halfX * 2, YARD_TOP, YARD.halfZ * 2, '#8fd16a', 0, YARD_TOP / 2, 0);
@@ -362,13 +320,14 @@ export function createGan(data: CityData, castShadow: boolean): Gan {
   group.name = 'gan';
   group.position.copy(center);
   group.rotation.y = yaw;
-  group.add(mesh, glow, fairy);
+  group.add(mesh, glow, fairy.points);
   group.updateMatrixWorld(true);
   const toLocal = group.matrixWorld.clone().invert();
   const local = new THREE.Vector3();
 
-  return {
-    group,
+  const site: Site = { position: group.localToWorld(ROOF_CENTER.clone()), radius: ROOF_RADIUS, padRadius: PAD_RADIUS };
+  const decor: Decor = {
+    objects: [group],
     surfaceAt(x, z, belowY) {
       local.set(x, 0, z).applyMatrix4(toLocal);
       const { x: lx, z: lz } = local;
@@ -381,12 +340,11 @@ export function createGan(data: CityData, castShadow: boolean): Gan {
     applyLighting(m) {
       fabric.setDaylight(m.daylight);
       soak(fabric.material, ROUGHNESS, m.wet);
-      glow.visible = fairy.visible = lit(m);
-      glow.material.uniforms.uGlow.value = fairy.material.uniforms.uGlow.value = m.glow;
+      fairy.applyLighting(m);
+      glow.visible = lit(m);
+      glow.material.uniforms.uGlow.value = m.glow;
     },
-    update(time, pointScale) {
-      fairy.material.uniforms.uTime.value = time;
-      fairy.material.uniforms.uScale.value = pointScale;
-    },
+    update: (time, pointScale) => fairy.update(time, pointScale),
   };
+  return { site, decor };
 }

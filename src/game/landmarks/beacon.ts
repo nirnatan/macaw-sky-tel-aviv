@@ -3,23 +3,24 @@ import { fxMaterial, pointScale } from './fx';
 import { luminance, type Mood } from './mood';
 import { seeded } from './parts';
 import { createSign, type SignStyle } from './sign';
+import type { SignSlot } from './sign-layout';
 
 const FOUND_COLOR = new THREE.Color('#5dff8a');
 const BEAM_HEIGHT = 900;
 const SPARKLES = 90;
 const NIGHT_LUMINANCE = 1.1 * 1.6; // beam core radiance at night, well over the 1.1 bloom threshold
+const SIGN_RISE = 2; // extra pointer height per unit of sign growth, so big far-away signs clear the rooftops
 
 export interface BeaconOptions {
   position: THREE.Vector3; // landing spot (roof center)
   padRadius: number; // visual pulse ring radius
   signHeight: number; // pointer tip height above the spot
-  signLift: number; // extra tip height per unit of sign growth, so far-away signs of nearby places stack instead of overlapping
-  color: THREE.ColorRepresentation;
-  sign: SignStyle;
+  sign: SignStyle; // its color tints the whole beacon
 }
 
 export interface Beacon {
   readonly objects: THREE.Object3D[];
+  readonly sign: SignSlot;
   setFound(time: number): void;
   applyLighting(m: Mood): void;
   update(dt: number, time: number, camera: THREE.Camera): void;
@@ -116,7 +117,7 @@ function sparkles(center: THREE.Vector3, radius: number, color: THREE.Color, glo
 }
 
 export function createBeacon(o: BeaconOptions): Beacon {
-  const base = new THREE.Color(o.color);
+  const base = new THREE.Color(o.sign.color);
   const color = base.clone(); // shared by every uniform below, so lerping it recolors the whole beacon
   const glow: Glow = { uBoost: { value: 1 }, uNear: { value: 0.25 } };
   let nightBoost = 0;
@@ -135,12 +136,14 @@ export function createBeacon(o: BeaconOptions): Beacon {
   const sign = createSign(o.sign);
   sign.mesh.position.copy(o.position);
   sign.mesh.renderOrder = 5; // drawn over its own beam, which passes in front of it
+  const slot: SignSlot = { anchor: o.position.clone(), scale: 1, lift: 0 };
 
   let foundAt: number | null = null;
   let yaw: number | null = null;
   const tmp = new THREE.Vector3();
   return {
     objects: [beam, pulse, spark, sign.mesh],
+    sign: slot,
     setFound(time) {
       if (foundAt !== null) return;
       foundAt = time;
@@ -166,7 +169,9 @@ export function createBeacon(o: BeaconOptions): Beacon {
       const s = THREE.MathUtils.clamp(dist / 130, 1, 10);
       const m = sign.mesh;
       m.scale.setScalar(s);
-      m.position.y = o.position.y + o.signHeight + o.signLift * (s - 1) + 7.5 * s + Math.sin(time * 1.1) * 0.6 * s;
+      slot.scale = s;
+      slot.anchor.y = o.position.y + o.signHeight + SIGN_RISE * (s - 1) + 7.5 * s;
+      m.position.y = slot.anchor.y + slot.lift + Math.sin(time * 1.1) * 0.6 * s;
       const target = Math.atan2(cam.x - m.position.x, cam.z - m.position.z);
       yaw ??= target;
       const delta = Math.atan2(Math.sin(target - yaw), Math.cos(target - yaw));

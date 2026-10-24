@@ -3,8 +3,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BlendFunction, BloomEffect, EffectComposer, EffectPass, RenderPass, ToneMappingEffect, ToneMappingMode } from 'postprocessing';
 import { loadCityData, type Building, type CityData } from '../src/world/data';
 import { createLandmarks } from '../src/game/landmarks';
+import { createCity } from '../src/world/city';
 import type { Lighting, TargetId, TimeOfDay } from '../src/contracts';
 import { project } from '../src/geo';
+import { PLACE_IDS } from '../src/places';
 
 const params = new URLSearchParams(location.search);
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
@@ -90,16 +92,15 @@ function seaMesh(data: CityData): THREE.Mesh {
 }
 
 const data = await loadCityData();
-const school = new THREE.Vector2(data.targets.school.x, data.targets.school.z);
-const gan = new THREE.Vector2(data.targets.gan.x, data.targets.gan.z);
 const [azX, azZ] = project(32.0742, 34.792);
 const [gordonX, gordonZ] = project(32.0835, 34.7685);
-const contextCenters = [school, gan, new THREE.Vector2(azX, azZ), new THREE.Vector2(gordonX, gordonZ)];
+const contextCenters = [...PLACE_IDS.map((id) => new THREE.Vector2(data.targets[id].x, data.targets[id].z)), new THREE.Vector2(azX, azZ), new THREE.Vector2(gordonX, gordonZ)];
 
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d9c4a3', roughness: 1 }));
 ground.receiveShadow = true;
 const context = new THREE.Group();
-context.add(ground, seaMesh(data), extrudeNear(data.buildings, contextCenters, 420), roadsNear(data, contextCenters, 420));
+const city = params.get('city') === 'real' ? createCity(data, { scene, quality: 'high' }) : null; // the game's own buildings, parapets and roof clutter
+context.add(ground, seaMesh(data), ...(city ? [city.group] : [extrudeNear(data.buildings, contextCenters, 420), roadsNear(data, contextCenters, 420)]));
 scene.add(context);
 
 // A stand-in for the environment module: enough sky, haze and key light to judge the landmarks under each condition.
@@ -158,7 +159,7 @@ function setLighting(p: Partial<Pick<Lighting, 'night' | 'rain' | 'wetness' | 'o
 
 const quality = (params.get('q') as 'low' | 'medium' | 'high') ?? 'high';
 const landmarks = createLandmarks(data, { scene, quality });
-const [schoolSpot, ganSpot] = landmarks.spots;
+const spot = (id: TargetId) => landmarks.spots.find((s) => s.id === id)!.position;
 const ganGroup = landmarks.group.getObjectByName('gan')!;
 
 const bird = new THREE.Vector3();
@@ -170,11 +171,28 @@ const ring = (i: number) => {
   const dir = next.clone().sub(p).setY(0).normalize();
   return { pos: p.clone().addScaledVector(dir, -30).add(new THREE.Vector3(0, 4, 0)), look: p.clone().addScaledVector(dir, 60) };
 };
-const mid = schoolSpot.position.clone().lerp(ganSpot.position, 0.5);
+const mid = spot('school').clone().lerp(spot('gan'), 0.5);
+const hadarYosef = spot('school').clone().add(spot('gan')).add(spot('newHome')).divideScalar(3).setY(0);
+/** Camera `distance` m away horizontally toward `bearing` (degrees, 0 = south, 90 = west), `height` m up, looking at `look`. */
+const from = (look: THREE.Vector3, distance: number, bearing: number, height: number, lookUp = 0): View => {
+  const a = THREE.MathUtils.degToRad(bearing);
+  return { pos: look.clone().add(new THREE.Vector3(-Math.sin(a) * distance, height, Math.cos(a) * distance)), look: look.clone().setY(look.y + lookUp) };
+};
+const homeViews = (id: TargetId): Record<string, () => View> => ({
+  [id]: () => from(spot(id), 26, 35, 20),
+  [`${id}300`]: () => from(spot(id), 300, 40, 90, 20),
+  [`${id}1500`]: () => from(spot(id), 1500, 40, 200, 60),
+});
 const views: Record<string, () => View> = {
   gan: () => ({ pos: ganGroup.localToWorld(new THREE.Vector3(16, 13, 26)), look: ganGroup.localToWorld(new THREE.Vector3(0, 1.5, 0)) }),
-  ganTop: () => ({ pos: ganSpot.position.clone().add(new THREE.Vector3(6, 45, 18)), look: ganSpot.position.clone() }),
-  school: () => ({ pos: schoolSpot.position.clone().add(new THREE.Vector3(38, 30, 36)), look: schoolSpot.position.clone() }),
+  ganTop: () => ({ pos: spot('gan').clone().add(new THREE.Vector3(6, 45, 18)), look: spot('gan').clone() }),
+  school: () => ({ pos: spot('school').clone().add(new THREE.Vector3(38, 30, 36)), look: spot('school').clone() }),
+  ...homeViews('oldHome'),
+  ...homeViews('newHome'),
+  cluster600: () => from(hadarYosef, 600, 45, 150, 40),
+  cluster2k: () => from(hadarYosef, 2000, 50, 220, 90),
+  clusterWest: () => from(hadarYosef, 600, 88, 110, 40), // school stands right in front of the new house
+  clusterWest2k: () => from(hadarYosef, 2000, 88, 200, 90),
   near: () => ({ pos: mid.clone().add(new THREE.Vector3(-210, 110, 200)), look: mid.clone().setY(30) }),
   far: () => ({ pos: mid.clone().add(new THREE.Vector3(-1500, 220, 1300)), look: mid.clone().setY(60) }),
   far3k: () => ({ pos: mid.clone().add(new THREE.Vector3(-2200, 200, 2100)), look: mid.clone().setY(80) }),
@@ -217,7 +235,7 @@ for (const name of Object.keys(views)) {
   const b = Object.assign(document.createElement('button'), { textContent: name, onclick: () => setView(name) });
   buttons.append(b);
 }
-for (const id of ['school', 'gan'] as TargetId[]) {
+for (const id of PLACE_IDS) {
   buttons.append(Object.assign(document.createElement('button'), { textContent: `found ${id}`, onclick: () => landmarks.setFound(id) }));
   buttons.append(Object.assign(document.createElement('button'), { textContent: `burst ${id}`, onclick: () => landmarks.burst(id) }));
 }
@@ -252,6 +270,8 @@ function frame(dt: number, l: Lighting = L) {
   bird.copy(parkedBird ?? controls.target);
   landmarks.applyLighting(l);
   landmarks.update(dt, camera, bird);
+  city?.applyLighting(l);
+  city?.update(camera);
   composer.render(dt);
 }
 
@@ -286,7 +306,47 @@ function landmarkCalls(): number {
   context.visible = true;
   return calls;
 }
-Object.assign(window, { landmarks, data, camera, controls, setView, landmarkCalls, THREE, renderer, scene, setTime, setLighting, lighting, checkRecompile, frame, programs: () => renderer.info.programs!.length });
+const signMeshes = () => {
+  const out: THREE.Mesh[] = [];
+  landmarks.group.traverse((o) => { if (o instanceof THREE.Mesh && o.renderOrder === 5) out.push(o); }); // the beacons' name boards
+  return out;
+};
+
+/** Screen rectangles (NDC) of the on-screen signs, and every pair that overlaps. */
+function signOverlaps() {
+  camera.updateMatrixWorld();
+  const screen = new THREE.Box2(new THREE.Vector2(-1, -1), new THREE.Vector2(1, 1));
+  const rects = signMeshes().map((m) => {
+    const box = new THREE.Box2();
+    let ahead = true;
+    for (const [x, y] of [[-15, -7.5], [15, -7.5], [15, 7.5], [-15, 7.5]]) {
+      const p = m.localToWorld(new THREE.Vector3(x, y, 0));
+      ahead &&= p.clone().applyMatrix4(camera.matrixWorldInverse).z < 0; // a corner behind the camera projects mirrored
+      p.project(camera);
+      box.expandByPoint(new THREE.Vector2(p.x, p.y));
+    }
+    return { box, onScreen: ahead && box.intersectsBox(screen) };
+  });
+  const pairs: [number, number][] = [];
+  rects.forEach((a, i) => rects.forEach((b, j) => { if (i < j && a.onScreen && b.onScreen && a.box.intersectsBox(b.box)) pairs.push([i, j]); }));
+  return pairs.map(([i, j]) => `${PLACE_IDS[i]}/${PLACE_IDS[j]}`);
+}
+
+/** Orbits the Hadar Yosef cluster at several ranges, letting the signs settle at each stop, and lists every overlap left. */
+function sweepSigns(ranges = [150, 300, 600, 1000, 2000], bearings = 16, climb = 0.12) {
+  const hits: string[] = [];
+  for (const d of ranges) {
+    for (let b = 0; b < bearings; b++) {
+      const v = from(hadarYosef, d, (b / bearings) * 360, 40 + d * climb, 30);
+      camera.position.copy(v.pos);
+      controls.target.copy(v.look);
+      for (let f = 0; f < 90; f++) frame(1 / 30);
+      for (const pair of signOverlaps()) hits.push(`${d}m@${Math.round((b / bearings) * 360)}deg ${pair}`);
+    }
+  }
+  return { stops: ranges.length * bearings, hits };
+}
+Object.assign(window, { city, signOverlaps, sweepSigns, landmarks, data, camera, controls, setView, landmarkCalls, THREE, renderer, scene, setTime, setLighting, lighting, checkRecompile, frame, programs: () => renderer.info.programs!.length });
 
 const stats = document.getElementById('stats')!;
 const timer = new THREE.Timer();
