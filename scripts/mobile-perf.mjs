@@ -1,7 +1,10 @@
 // Phone budget run in headless Chrome: GPU memory by category, JS heap, then frame cost per condition.
 // node scripts/mobile-perf.mjs <url> <out.json> [shotDir]
 // env: QUALITY=low VIEWPORT=390x844 DPR=3 THROTTLE=4 RATIOS=1,2 CONDS=night:rain,sunset RUNS=5 SECONDS=4 MEMORY=1
-// With shotDir it also saves one unthrottled screenshot per condition and ratio.
+//      POSE_X/Y/Z/YAW (bird start for every run), UNCAPPED=1 (no vsync: the interval is the real per-frame cost),
+//      ABLATIONS=none,bloom,shadow,fringe,far, CPUPROFILE=<path prefix>, SPOTS=1 (program count at each special place),
+//      CYCLE=high,low (setQuality round trip), CHURN=<n> (setPixelRatio churn; GL totals must come back unchanged)
+// With shotDir it also saves one unthrottled screenshot per condition and ratio, with the HUD hidden.
 import { chromium } from 'playwright-core';
 import { writeFile } from 'node:fs/promises';
 
@@ -72,62 +75,38 @@ const instrument = `(() => {
     return ctx;
   };
   const pending = [];
-  const poll = () => {
-    while (pending.length && gl.getQueryParameter(pending[0].q, gl.QUERY_RESULT_AVAILABLE)) {
-      const { q, rec, name } = pending.shift();
-      if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) {
-        const ms = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6;
-        if (name) rec.segs[name] = (rec.segs[name] ?? 0) + ms; else rec.gpu = ms;
-      }
-      gl.deleteQuery(q);
-    }
-  };
-  let rec = null, open = null;
-  const begin = (name) => { if (open) gl.endQuery(timer.TIME_ELAPSED_EXT); const q = gl.createQuery(); gl.beginQuery(timer.TIME_ELAPSED_EXT, q); open = { q, rec, name }; pending.push(open); };
-  const end = () => { if (open) gl.endQuery(timer.TIME_ELAPSED_EXT); open = null; };
-  const segName = (r, scene) => {
-    if (scene === window.game.scene) return "scene";
-    const t = r.getRenderTarget()?.texture?.name ?? "";
-    return t ? t.replace(/Mipmap\\d+/, "Mipmap*") : "to screen";
-  };
   let wrapped = false;
   window.__ablate = "none";
-  const wrapRenderer = (r) => {
+  const skipBloom = (r) => { // ablation: drop the bright pass and the bloom mip chain
     wrapped = true;
-    const render = r.render, shadow = r.shadowMap.render;
+    const render = r.render;
     r.render = function (scene, camera) {
       if (window.__ablate === "bloom" && /Mipmap|Luminance/.test(this.getRenderTarget()?.texture?.name ?? "")) return;
-      if (!rec || !window.__profile) return render.call(this, scene, camera);
-      begin(segName(this, scene)); render.call(this, scene, camera); begin("other");
-    };
-    r.shadowMap.render = function (...a) {
-      if (!rec || !window.__profile) return shadow.apply(this, a);
-      begin("shadow"); shadow.apply(this, a); begin("scene");
+      render.call(this, scene, camera);
     };
   };
   window.__frames = null;
-  window.__profile = false;
   const raf = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = (cb) => raf((t) => {
     if (cb.name !== "frame" || !window.__frames) return cb(t);
     const info = window.game?.renderer.info;
-    if (window.game && !wrapped) wrapRenderer(window.game.renderer);
+    if (window.game && !wrapped) skipBloom(window.game.renderer);
     if (window.__ablate !== "none") window.__applyAblation?.();
     if (info) { info.autoReset = false; info.reset(); }
-    rec = { t, cpu: 0, gpu: null, segs: {}, calls: 0, tris: 0 };
-    if (timer) begin(window.__profile ? "other" : null);
-    const px = new Uint8Array(4);
-    const sync = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
-    if (window.__finish) sync();
+    const rec = { t, cpu: 0, gpu: null, calls: 0, tris: 0 };
+    const q = timer ? gl.createQuery() : null;
+    if (q) gl.beginQuery(timer.TIME_ELAPSED_EXT, q);
     const start = performance.now();
     cb(t);
     rec.cpu = performance.now() - start;
-    if (window.__finish) { sync(); rec.sync = performance.now() - start - rec.cpu; }
-    if (timer) end();
+    if (q) { gl.endQuery(timer.TIME_ELAPSED_EXT); pending.push({ q, rec }); }
     rec.calls = info?.render.calls ?? 0; rec.tris = info?.render.triangles ?? 0;
     window.__frames.push(rec);
-    rec = null;
-    if (timer) poll();
+    while (pending.length && gl.getQueryParameter(pending[0].q, gl.QUERY_RESULT_AVAILABLE)) {
+      const done = pending.shift();
+      if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) done.rec.gpu = gl.getQueryParameter(done.q, gl.QUERY_RESULT) / 1e6;
+      gl.deleteQuery(done.q);
+    }
   });
 })();`;
 
@@ -273,7 +252,6 @@ if (shotDir) {
 
 if (runs > 0) {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
-  await page.evaluate(([p, f]) => { window.__profile = p; window.__finish = f; }, [env.PROFILE === '1', env.FINISH === '1']);
   for (let i = 0; i < runs; i++) {
     for (const a of ablations) for (const r of ratios) for (const c of conds) { // interleaved, so drift and machine noise land on every side
       await setAblation(a);
@@ -287,12 +265,10 @@ if (runs > 0) {
       await page.waitForTimeout(seconds * 1000);
       if (profiling) await writeFile(`${env.CPUPROFILE}-pr${r}-${c.time}${c.rain ? '-rain' : ''}.cpuprofile`, JSON.stringify((await cdp.send('Profiler.stop')).profile));
       const frames = await page.evaluate(() => { const f = window.__frames; window.__frames = null; return f; });
-      const segs = {};
-      for (const f of frames) for (const [k, v] of Object.entries(f.segs)) (segs[k] ??= []).push(v);
       const intervals = frames.slice(1).map((f, k) => f.t - frames[k].t);
-      const run = { run: i, ablation: a, ratio: r, ...c, frames: frames.length, cpu: stats(frames.map((f) => f.cpu)), gpu: stats(frames.map((f) => f.gpu)), gpuSync: stats(frames.map((f) => f.sync)), interval: stats(intervals), calls: stats(frames.map((f) => f.calls)), tris: stats(frames.map((f) => f.tris)), flying: await page.evaluate(() => window.game.player.flying), segs: Object.fromEntries(Object.entries(segs).map(([k, v]) => [k, stats(v)?.median])) };
+      const run = { run: i, ablation: a, ratio: r, ...c, frames: frames.length, cpu: stats(frames.map((f) => f.cpu)), gpu: stats(frames.map((f) => f.gpu)), interval: stats(intervals), calls: stats(frames.map((f) => f.calls)), tris: stats(frames.map((f) => f.tris)), flying: await page.evaluate(() => window.game.player.flying) };
       result.runs.push(run);
-      console.log(`run ${i} ${a} pr${r} ${c.time}${c.rain ? '+rain' : ''}: cpu ${run.cpu?.median} ms, gpu ${run.gpu?.median} ms, sync ${run.gpuSync?.median} ms, interval ${run.interval?.median} ms, calls ${run.calls?.median}, frames ${run.frames}${env.PROFILE === '1' ? ' ' + JSON.stringify(run.segs) : ''}`);
+      console.log(`run ${i} ${a} pr${r} ${c.time}${c.rain ? '+rain' : ''}: cpu ${run.cpu?.median} ms, gpu ${run.gpu?.median} ms, interval ${run.interval?.median} ms, calls ${run.calls?.median}, frames ${run.frames}`);
     }
   }
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
