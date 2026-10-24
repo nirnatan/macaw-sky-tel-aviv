@@ -61,14 +61,15 @@ export function buildFlats(data: CityData, grid: ChunkGrid, uniforms: CityUnifor
     fillPolygon(writerAt(cx, cz), a.rings, style.y, style.color, style.type);
   }
   const lampStations: number[] = [];
-  for (const r of data.roads) {
+  data.roads.forEach((r, i) => {
     const style = ROAD_STYLE[r.kind];
-    const flat = () => style.y;
+    const y0 = style.y + (i % 8) * 0.0012; // overlapping ribbons (the two halves of a divided road) must never be coplanar; stays under the 0.01 step between kinds
+    const flat = () => y0;
     const total = r.bridge ? polylineLength(r.pts) : 0;
-    const yAt = r.bridge ? (s: number) => style.y + BRIDGE_HEIGHT * Math.min(1, Math.min(s, total - s) / Math.min(40, total / 2)) : flat;
+    const yAt = r.bridge ? (s: number) => y0 + BRIDGE_HEIGHT * Math.min(1, Math.min(s, total - s) / Math.min(40, total / 2)) : flat;
     ribbon(writerAt, grid, r.pts, r.width / 2 + style.sidewalk, r.width / 2, style.color, style.type, yAt, r.bridge);
     if (style.type === SURF.asphalt) addLampStations(lampStations, r.pts, r.width / 2, yAt);
-  }
+  });
   for (const r of data.rivers) {
     const hw = r.major ? RIVER_HALF_WIDTH.major : RIVER_HALF_WIDTH.minor;
     ribbon(writerAt, grid, r.pts, hw, hw, RIVER_COLOR, SURF.water, () => 0.16, false);
