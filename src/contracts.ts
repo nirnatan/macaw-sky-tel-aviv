@@ -60,6 +60,10 @@ export interface Environment {
   render(dt: number): void;
   setSize(width: number, height: number): void;
   setQuality(q: Quality): void;
+  /** Tier pixel-ratio cap (already clamped to devicePixelRatio); main's dynamic resolution never exceeds it. */
+  readonly maxPixelRatio: number;
+  /** Dynamic resolution from main: render at this pixel ratio (main keeps it within [0.75, maxPixelRatio]). Cheap; no reallocation storm. */
+  setPixelRatio(ratio: number): void;
   /** Speed effects driven by the game: 0..1 (boost/dive motion blur or speed lines strength). */
   setSpeedEffect(amount: number): void;
 }
@@ -155,6 +159,15 @@ export interface Input {
   /** Call once per frame after reading state: clears the "pressed this frame" flags. */
   endFrame(): void;
   setTouchControlsVisible(v: boolean): void;
+  /** True when the device reports orientation (phones and tablets). */
+  readonly tiltSupported: boolean;
+  /**
+   * Tilt-to-steer on or off. Must be called from a user gesture: on iOS it asks for motion permission.
+   * Calibrates the current hold as neutral. Resolves to whether tilt is now active.
+   */
+  enableTilt(on: boolean): Promise<boolean>;
+  /** Makes the current hold the new neutral (for example after the kid shifts how they hold the phone). */
+  recalibrateTilt(): void;
 }
 
 // ---------- Audio (src/audio/) ----------
@@ -185,7 +198,7 @@ export interface AudioEngine {
 // ---------- UI (src/ui/) ----------
 export type PlayerName = 'Amit' | 'Or';
 /** Persisted. time/rain default to 'sunset' / false; old saves load with those defaults. The rainbow is never persisted. */
-export interface Settings extends Conditions { muted: boolean; music: boolean; quality: Quality | 'auto' }
+export interface Settings extends Conditions { muted: boolean; music: boolean; quality: Quality | 'auto'; tilt: boolean }
 export interface StartChoice { player: PlayerName; species: Species }
 export interface TargetHud {
   id: TargetId;
