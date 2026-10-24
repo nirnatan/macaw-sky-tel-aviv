@@ -1,7 +1,7 @@
 import type { Analog, InputHooks } from './hooks';
 import { clamp } from './hooks';
 
-const BUTTON = { a: 0, b: 1, y: 3, lb: 4, rb: 5, rt: 7, start: 9 } as const;
+const BUTTON = { a: 0, b: 1, y: 3, lb: 4, rb: 5, rt: 7, start: 9, dpadUp: 12, dpadDown: 13, dpadLeft: 14, dpadRight: 15 } as const;
 const DEADZONE = 0.18;
 const ACTIVITY = 0.4; // stick/trigger level that counts as "the kid is using the pad"
 
@@ -27,6 +27,8 @@ export function createGamepad(hooks: InputHooks) {
       if (edge(BUTTON.start)) hooks.press('pause');
       if (edge(BUTTON.lb)) hooks.roll(-1);
       if (edge(BUTTON.rb)) hooks.roll(1);
+      if (edge(BUTTON.dpadLeft) || edge(BUTTON.dpadRight)) hooks.press('cycleTime');
+      if (edge(BUTTON.dpadUp) || edge(BUTTON.dpadDown)) hooks.press('toggleRain');
 
       const [steer, climb] = withDeadzone(pad.axes[0] ?? 0, -(pad.axes[1] ?? 0)); // stick up = climb
       const flap = pressed[BUTTON.a] === true;

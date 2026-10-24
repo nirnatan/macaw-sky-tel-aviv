@@ -1,19 +1,14 @@
-import { clamp01, smoothstep, type Rig } from './rig';
-
-export interface AmbienceParams { speed: number; altitude: number; distanceToCoast: number; flying: boolean; effort: number }
+import type { AudioMix } from '../contracts';
+import { createBirds, createCrickets } from './critters';
+import { createRain } from './rain';
+import { clamp01, loopingNoise, nightAmount, smoothstep, type Rig } from './rig';
 
 const MAX_SPEED = 38; // m/s that maps to full wind
 
 /** Looping noise through filters and gains, retuned a few times per second from the flight state. */
 export function createAmbience(rig: Rig, destination: AudioNode) {
   const { ctx } = rig;
-  const loop = (): AudioBufferSourceNode => {
-    const source = ctx.createBufferSource();
-    source.buffer = rig.noise;
-    source.loop = true;
-    source.start(0, Math.random() * rig.noise.duration); // random offset so layers do not phase together
-    return source;
-  };
+  const loop = () => loopingNoise(rig);
 
   const windLow = ctx.createBiquadFilter();
   windLow.type = 'lowpass';
@@ -71,8 +66,12 @@ export function createAmbience(rig: Rig, destination: AudioNode) {
     lfo.start(ctx.currentTime + i * 1.7);
   });
 
+  const rain = createRain(rig, destination);
+  const crickets = createCrickets(rig, destination);
+  const birds = createBirds(rig, destination);
+
   return {
-    update(p: AmbienceParams) {
+    update(p: AudioMix) {
       const now = ctx.currentTime;
       const speed = clamp01(p.speed / MAX_SPEED);
       const height = clamp01(p.altitude / 250);
@@ -82,6 +81,12 @@ export function createAmbience(rig: Rig, destination: AudioNode) {
       gustGain.gain.setTargetAtTime(windLevel * (0.35 + 0.4 * height), now, 0.2);
       const nearSea = 1 - smoothstep(250, 3200, p.distanceToCoast);
       seaProximity.gain.setTargetAtTime(0.75 * nearSea * (1 - 0.55 * height), now, 0.4);
+
+      const dry = 1 - clamp01(p.rain);
+      const nearGround = 1 - smoothstep(20, 160, p.altitude);
+      rain.update(clamp01(p.rain));
+      crickets.update(nightAmount(p.night) * dry * nearGround);
+      birds.update(clamp01(p.morning) * dry * (0.4 + 0.6 * nearGround));
     },
   };
 }

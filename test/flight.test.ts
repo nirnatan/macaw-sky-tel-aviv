@@ -12,7 +12,7 @@ const world: WorldQuery = {
   },
   collide: () => null,
 };
-const idle = (): InputState => ({ steer: 0, climb: 0, strafe: 0, flap: false, boost: false, landToggle: false, squawk: false, roll: 0, pause: false, device: 'keyboard' });
+const idle = (): InputState => ({ steer: 0, climb: 0, strafe: 0, flap: false, boost: false, landToggle: false, squawk: false, roll: 0, pause: false, cycleTime: false, toggleRain: false, device: 'keyboard' });
 const run = (p: Player, seconds: number, input: Partial<InputState> = {}, onFrame?: () => void) => {
   for (let t = 0; t < seconds; t += 1 / 60) { p.update(1 / 60, { ...idle(), ...input }, world); onFrame?.(); }
 };

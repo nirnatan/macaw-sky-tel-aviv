@@ -1,4 +1,4 @@
-import type { CreateUI, HudFrame, Settings, StartChoice, UI } from '../contracts';
+import { TIMES, type CreateUI, type HudFrame, type Settings, type StartChoice, type UI } from '../contracts';
 import { createCelebrations } from './celebrate';
 import { el, injectFonts } from './dom';
 import { createHud } from './hud';
@@ -6,6 +6,7 @@ import { createLoader } from './loader';
 import { createPauseMenu } from './pause';
 import { createStartScreen } from './start';
 import { loadSaved, persist } from './storage';
+import { RAIN_TOASTS, TIME_TOASTS, toastText, type Bilingual } from './strings';
 import { createToasts } from './toast';
 import './ui.css';
 
@@ -28,24 +29,39 @@ export const createUI: CreateUI = ({ root, data, input }) => {
     pauseMenu.open = paused;
     pauseListeners.forEach((cb) => cb(paused));
   };
-  const pauseMenu = createPauseMenu(container, settings, {
-    onResume: () => setPaused(false),
-    onChange: () => {
-      persist({ choice: saved.choice, settings });
-      settingsListeners.forEach((cb) => cb({ ...settings }));
-    },
-  });
+  const settingsChanged = () => {
+    persist(saved);
+    pauseMenu.refresh();
+    start.refreshConditions();
+    settingsListeners.forEach((cb) => cb({ ...settings }));
+  };
+  const pauseMenu = createPauseMenu(container, settings, { onResume: () => setPaused(false), onChange: settingsChanged });
   const hud = createHud(container, data, input, () => setPaused(true));
-  const start = createStartScreen(container, saved.choice, input, (choice) => { saved.choice = choice; persist(saved); });
+  const start = createStartScreen(container, saved.choice, input, settings, (choice) => { saved.choice = choice; persist(saved); }, settingsChanged);
   const celebrations = createCelebrations(container);
   const toast = createToasts(container);
   const setLoading = createLoader(container);
 
+  const announce = (text: Bilingual) => { if (playing && !pauseMenu.isOpen) toast(toastText(text)); };
+
   const pollInput = () => {
-    container.classList.toggle('is-touch', input.state.device === 'touch');
-    if (input.state.pause) {
-      input.state.pause = false; // consumed here so the same press cannot toggle twice
+    const state = input.state;
+    container.classList.toggle('is-touch', state.device === 'touch');
+    if (state.pause) {
+      state.pause = false; // consumed here so the same press cannot toggle twice
       setPaused(!pauseMenu.isOpen);
+    }
+    if (state.cycleTime) {
+      state.cycleTime = false;
+      settings.time = TIMES[(TIMES.indexOf(settings.time) + 1) % TIMES.length]!;
+      settingsChanged();
+      announce(TIME_TOASTS[settings.time]);
+    }
+    if (state.toggleRain) {
+      state.toggleRain = false;
+      settings.rain = !settings.rain;
+      settingsChanged();
+      announce(settings.rain ? RAIN_TOASTS.on : settings.time === 'night' ? RAIN_TOASTS.off : RAIN_TOASTS.offRainbow);
     }
   };
   const loop = () => { pollInput(); requestAnimationFrame(loop); };

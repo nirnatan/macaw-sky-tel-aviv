@@ -6,7 +6,7 @@ const AXES = {
   climb: { negative: ['ArrowDown', 'KeyS'], positive: ['ArrowUp', 'KeyW'] }, // up = nose up
 } as const;
 const HOLD = { flap: ['Space'], boost: ['ShiftLeft', 'ShiftRight'] } as const;
-const PRESS = { KeyL: 'landToggle', KeyX: 'squawk', Escape: 'pause', KeyP: 'pause' } as const;
+const PRESS = { KeyL: 'landToggle', KeyX: 'squawk', Escape: 'pause', KeyP: 'pause', KeyT: 'cycleTime', KeyR: 'toggleRain' } as const;
 const ROLL = { KeyQ: -1, KeyE: 1 } as const;
 
 const GAME_KEYS = new Set<string>([

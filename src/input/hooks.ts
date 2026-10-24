@@ -4,7 +4,7 @@ export type Device = InputState['device'];
 
 /** How a source reports into the shared InputState. */
 export interface InputHooks {
-  press(key: 'landToggle' | 'squawk' | 'pause'): void;
+  press(key: 'landToggle' | 'squawk' | 'pause' | 'cycleTime' | 'toggleRain'): void;
   roll(direction: -1 | 1): void;
   device(device: Device): void;
 }

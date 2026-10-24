@@ -12,6 +12,9 @@ const CHORDS = [
   { root: 33, pad: [57, 60, 64, 67] }, // Am7
   { root: 41, pad: [57, 60, 65, 69] }, // F
 ];
+const MOOD_EASE = 1.5; // seconds, time constant for easing into and out of the night mood
+const NIGHT_MOOD = { level: 0.72, toneHz: 1500, pluckChance: 0.45 }; // gain, lowpass cutoff and pluck probability factor at full night
+const DAY_TONE_HZ = 4200;
 const SCALE = [60, 62, 64, 67, 69, 72, 74, 76, 79, 81]; // C major pentatonic, two octaves
 
 /** Calm generative loop: slow pad chords, a soft bass, and sparse pentatonic plucks through a dotted echo. */
@@ -20,12 +23,13 @@ export function createMusic(rig: Rig, destination: AudioNode) {
   const input = ctx.createGain();
   const tone = ctx.createBiquadFilter();
   tone.type = 'lowpass';
-  tone.frequency.value = 4200;
+  tone.frequency.value = DAY_TONE_HZ;
   const ducker = ctx.createGain();
-  input.connect(tone).connect(ducker).connect(destination);
+  const mood = ctx.createGain(); // night softening, kept apart from the ducker and the music bus so neither fights it
+  input.connect(tone).connect(ducker).connect(mood).connect(destination);
   const reverbSend = ctx.createGain();
   reverbSend.gain.value = 0.4;
-  ducker.connect(reverbSend).connect(rig.reverb);
+  mood.connect(reverbSend).connect(rig.reverb);
 
   const echo = ctx.createDelay(2);
   echo.delayTime.value = EIGHTH * 3;
@@ -92,6 +96,8 @@ export function createMusic(rig: Rig, destination: AudioNode) {
   let nextTime = 0;
   let step = 0;
   let lastIndex = 4;
+  let moodTarget = 0;
+  let moodNow = 0; // eased copy of moodTarget; the audio params ease themselves
 
   const scheduleStep = () => {
     const chord = CHORDS[Math.floor(step / STEPS_PER_CHORD) % CHORDS.length]!;
@@ -99,7 +105,7 @@ export function createMusic(rig: Rig, destination: AudioNode) {
     if (inChord === 0) { pad(nextTime, chord.pad, STEPS_PER_CHORD * EIGHTH); bass(nextTime, chord.root); }
     if (inChord === 8) bass(nextTime, chord.root + (Math.random() < 0.5 ? 7 : 0));
     const strong = inChord % 4 === 0;
-    if (Math.random() < (strong ? 0.6 : 0.26) && inChord < STEPS_PER_CHORD - 2) {
+    if (Math.random() < (strong ? 0.6 : 0.26) * (1 - (1 - NIGHT_MOOD.pluckChance) * moodNow) && inChord < STEPS_PER_CHORD - 2) {
       lastIndex = Math.min(SCALE.length - 1, Math.max(0, lastIndex + Math.round(random(-3, 3)) || 1));
       pluck(nextTime, SCALE[lastIndex]!, strong ? random(0.8, 1) : random(0.45, 0.75));
     }
@@ -107,6 +113,7 @@ export function createMusic(rig: Rig, destination: AudioNode) {
     step++;
   };
   const tick = () => {
+    moodNow += (moodTarget - moodNow) * (1 - Math.exp(-TICK_MS / 1000 / MOOD_EASE));
     if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.1; // after a suspend, resync instead of bursting
     while (nextTime < ctx.currentTime + LOOKAHEAD) scheduleStep();
   };
@@ -128,6 +135,14 @@ export function createMusic(rig: Rig, destination: AudioNode) {
       timer = 0;
       input.gain.cancelScheduledValues(ctx.currentTime);
       input.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.25);
+    },
+    /** 0 = day, 1 = full night: quieter, darker and sparser. Eases in over a few seconds. */
+    setMood(night: number) {
+      if (Math.abs(night - moodTarget) < 0.002) return;
+      moodTarget = night;
+      const now = ctx.currentTime;
+      mood.gain.setTargetAtTime(1 - (1 - NIGHT_MOOD.level) * night, now, MOOD_EASE);
+      tone.frequency.setTargetAtTime(DAY_TONE_HZ * (NIGHT_MOOD.toneHz / DAY_TONE_HZ) ** night, now, MOOD_EASE);
     },
     duck(seconds: number) {
       const now = ctx.currentTime;

@@ -11,7 +11,7 @@ export function createInput(root: HTMLElement): Input {
   if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
   const state: InputState = {
     steer: 0, climb: 0, strafe: 0, flap: false, boost: false,
-    landToggle: false, squawk: false, roll: 0, pause: false,
+    landToggle: false, squawk: false, roll: 0, pause: false, cycleTime: false, toggleRain: false,
     device: matchMedia('(pointer: coarse)').matches ? 'touch' : 'keyboard',
   };
   const hooks: InputHooks = {
@@ -33,6 +33,8 @@ export function createInput(root: HTMLElement): Input {
       state.landToggle = false;
       state.squawk = false;
       state.pause = false;
+      state.cycleTime = false;
+      state.toggleRain = false;
       state.roll = 0;
       const sources = [keyboard.read(dt), touch.read(), gamepad.poll()];
       state.steer = clamp(sources.reduce((sum, s) => sum + s.steer, 0), -1, 1);

@@ -1,4 +1,4 @@
-import type { InputState, PlayerName, Species } from '../contracts';
+import type { InputState, PlayerName, Species, TimeOfDay } from '../contracts';
 
 export interface Bilingual { he: string; en: string }
 type Device = InputState['device'];
@@ -30,6 +30,8 @@ export const UI_TEXT = {
   sound: { he: 'צלילים', en: 'Sound' },
   music: { he: 'מוזיקה', en: 'Music' },
   quality: { he: 'איכות תמונה', en: 'Picture quality' },
+  timeOfDay: { he: 'זמן ביום', en: 'Time of day' },
+  rain: { he: 'גשם', en: 'Rain' },
   loading: { he: 'טוענים את תל אביב...', en: 'Loading Tel Aviv...' },
   allFound: { he: 'מצאת את כל המקומות!', en: 'You found every place!' },
   pauseButton: { he: 'הפסקה', en: 'Pause' },
@@ -44,6 +46,29 @@ export const QUALITY_LABELS: Record<'auto' | 'low' | 'medium' | 'high', Bilingua
   medium: { he: 'בינונית', en: 'Medium' },
   high: { he: 'גבוהה', en: 'High' },
 };
+
+export const TIME_LABELS: Record<TimeOfDay, Bilingual> = {
+  sunrise: { he: 'זריחה', en: 'Sunrise' },
+  noon: { he: 'צהריים', en: 'Noon' },
+  sunset: { he: 'שקיעה', en: 'Sunset' },
+  night: { he: 'לילה', en: 'Night' },
+};
+
+export const TIME_TOASTS: Record<TimeOfDay, Bilingual> = {
+  sunrise: { he: 'בוקר טוב! זריחה', en: 'Good morning! Sunrise' },
+  noon: { he: 'צהריים בשמש!', en: 'Sunny noon!' },
+  sunset: { he: 'שקיעה זהובה', en: 'Golden sunset' },
+  night: { he: 'לילה טוב! כוכבים', en: 'Good night! Stars' },
+};
+
+export const RAIN_TOASTS = {
+  on: { he: 'יורד גשם!', en: 'It is raining!' },
+  off: { he: 'הגשם נגמר', en: 'The rain stopped' },
+  offRainbow: { he: 'הגשם נגמר. חפש קשת בענן!', en: 'Rain stopped. Find a rainbow!' },
+} satisfies Record<string, Bilingual>;
+
+/** Toasts render as one RTL line, so the English half is isolated to keep its own punctuation on the right side. */
+export const toastText = (text: Bilingual) => `${text.he} · \u2066${text.en}\u2069`;
 
 export const METERS: Bilingual = { he: 'מ׳', en: 'm' };
 export const KILOMETERS: Bilingual = { he: 'ק״מ', en: 'km' };
