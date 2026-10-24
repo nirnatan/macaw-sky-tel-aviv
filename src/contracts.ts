@@ -5,6 +5,36 @@ import type { CityData, Ring } from './world/data';
 
 export type Quality = 'low' | 'medium' | 'high';
 
+// ---------- Time of day and weather (env produces Lighting; city, landmarks, macaw, rain, audio and main read it) ----------
+export const TIMES = ['sunrise', 'noon', 'sunset', 'night'] as const;
+export type TimeOfDay = (typeof TIMES)[number];
+export interface Conditions { time: TimeOfDay; rain: boolean }
+
+/**
+ * Blended every frame by Environment.update(). The same object, with the same Vector3/Color instances, every frame.
+ * Consumers only read it and never branch on the time name; every difference comes from the env preset table.
+ */
+export interface Lighting {
+  /** Unit vector toward the key light: the sun by day, the moon at night. Swaps mid-blend while sunColor is near black. */
+  readonly sunDirection: THREE.Vector3;
+  /** Key light color times intensity, linear. Dips toward black at the midpoint of a day<->night blend. */
+  readonly sunColor: THREE.Color;
+  /** Linear haze color away from the sun: rain streak tint and hand-made distance fades. */
+  readonly hazeColor: THREE.Color;
+  /** 0 day .. 1 full night. Preset rows: sunrise 0.05, noon 0, sunset 0.15, night 1. Consumers apply their own smoothstep. */
+  readonly night: number;
+  /** 0..1: 1 on the sunrise row, 0 elsewhere (birdsong). */
+  readonly morning: number;
+  /** 0..1 rain intensity; ramps over about 5 s. */
+  readonly rain: number;
+  /** 0..1 surface wetness; rises behind rain, dries about 20 s after it stops. */
+  readonly wetness: number;
+  /** 0..1 cloud cover; rain pushes it up. */
+  readonly overcast: number;
+  /** 0..1; rises after rain stops while the sun is up, holds, then fades. */
+  readonly rainbow: number;
+}
+
 // ---------- Environment: sky, sun, water, fog, shadows, post-processing (src/env/) ----------
 export interface EnvironmentOptions {
   renderer: THREE.WebGLRenderer;
@@ -14,9 +44,14 @@ export interface EnvironmentOptions {
   quality: Quality;
 }
 export interface Environment {
-  readonly sunDirection: THREE.Vector3; // unit vector from the scene toward the sun (golden hour, low in the west over the sea)
-  readonly sunColor: THREE.Color;
-  /** Keeps the shadow frustum around `focus` (the bird) and advances water/clouds. */
+  readonly lighting: Lighting;
+  /**
+   * Sets the target conditions. A call equal to the current target is a no-op (no blend restart, no rainbow retrigger).
+   * The time blends over about 4 s, re-targeting from the current blended state; rain, wetness and rainbow follow their own rates.
+   * `instant` snaps everything (boot, behind the loader). Never recompiles a shader or adds, removes or hides a light.
+   */
+  setConditions(c: Conditions, opts?: { instant?: boolean }): void;
+  /** Blends lighting, keeps the shadow frustum around `focus` (the bird), advances water and clouds, refreshes the env map while blending. */
   update(dt: number, focus: THREE.Vector3): void;
   /** Renders the frame through the post-processing chain. Replaces renderer.render. */
   render(dt: number): void;
@@ -30,7 +65,7 @@ export type CreateEnvironment = (opts: EnvironmentOptions) => Environment;
 // ---------- City: buildings, roads, parks, trees, beach (src/world/) ----------
 export type SurfaceKind = 'ground' | 'roof' | 'water' | 'beach' | 'park';
 export interface Surface { height: number; kind: SurfaceKind }
-export interface CityOptions { scene: THREE.Scene; quality: Quality; sunDirection: THREE.Vector3 }
+export interface CityOptions { scene: THREE.Scene; quality: Quality }
 export interface City {
   readonly group: THREE.Group;
   /** Highest walkable surface at (x, z) at or below `belowY` (defaults to +Infinity): roof top, ground 0, or water 0. */
@@ -43,6 +78,12 @@ export interface City {
   /** Per-frame: distance-based culling / LOD around the camera. */
   update(camera: THREE.Camera): void;
   setQuality(q: Quality): void;
+  /**
+   * Per frame: night windows, street lamps and light pools, wet streets and roofs.
+   * Writes only uniforms, material scalars, drawRange/count and visibility, never program-affecting flags.
+   * Visibility of condition-only objects is a pure function of the latest `l`, so main can warm up with an all-on Lighting.
+   */
+  applyLighting(l: Lighting): void;
 }
 export type CreateCity = (data: CityData, opts: CityOptions) => City;
 
@@ -72,6 +113,8 @@ export interface Macaw {
   update(dt: number, input: MacawAnimInput): void;
   /** One-shot gestures. */
   squawk(): void; // beak opens, head bobs
+  /** Per frame: night plumage lift and cool fresnel rim; wet plumage and keratin. Uniforms and material scalars only. */
+  applyLighting(l: Lighting): void;
   dispose(): void;
 }
 export type CreateMacaw = (species: Species) => Macaw;
@@ -96,6 +139,10 @@ export interface InputState {
   roll: -1 | 0 | 1;
   /** Pressed this frame: pause / menu. */
   pause: boolean;
+  /** Pressed this frame: next time of day (keyboard T, gamepad D-pad left/right). Consumed and cleared by the UI, like pause. */
+  cycleTime: boolean;
+  /** Pressed this frame: rain on/off (keyboard R, gamepad D-pad up/down). Consumed and cleared by the UI, like pause. */
+  toggleRain: boolean;
   /** Last device used, so hints show the right buttons. */
   device: 'keyboard' | 'touch' | 'gamepad';
 }
@@ -107,11 +154,21 @@ export interface Input {
 }
 
 // ---------- Audio (src/audio/) ----------
+export interface AudioMix {
+  speed: number;
+  altitude: number;
+  distanceToCoast: number;
+  flying: boolean;
+  effort: number;
+  night: number; // Lighting.night: crickets and softer music (gate with smoothstep(0.3, 0.9, night) so sunset sounds as today)
+  rain: number; // Lighting.rain: rain ambience; mutes birds and crickets
+  morning: number; // Lighting.morning: sunrise birdsong
+}
 export interface AudioEngine {
   /** Must be called from a user gesture (start button). */
   unlock(): Promise<void>;
-  /** Continuous mix parameters, called per frame. */
-  update(p: { speed: number; altitude: number; distanceToCoast: number; flying: boolean; effort: number }): void;
+  /** Continuous mix parameters, called per frame (internally throttled). */
+  update(p: AudioMix): void;
   flap(strength: number): void;
   squawk(species: Species): void;
   ring(): void; // collected a golden ring
@@ -123,7 +180,8 @@ export interface AudioEngine {
 
 // ---------- UI (src/ui/) ----------
 export type PlayerName = 'Amit' | 'Or';
-export interface Settings { muted: boolean; music: boolean; quality: Quality | 'auto' }
+/** Persisted. time/rain default to 'sunset' / false; old saves load with those defaults. The rainbow is never persisted. */
+export interface Settings extends Conditions { muted: boolean; music: boolean; quality: Quality | 'auto' }
 export interface StartChoice { player: PlayerName; species: Species }
 export interface TargetHud {
   id: 'school' | 'gan';
@@ -172,6 +230,12 @@ export interface Landmarks {
   /** 3D fireworks / confetti burst at the spot. */
   burst(id: TargetId): void;
   update(dt: number, camera: THREE.Camera, bird: THREE.Vector3): void;
+  /**
+   * Per frame, before update(): night glow (beacons, signs, rings, gan lights, boat lanterns, balloon burners), rain gloss,
+   * and the gulls' go-home target (the motion runs in update()). Uniforms, material scalars, counts and visibility only.
+   * Visibility is a pure function of the latest `l`.
+   */
+  applyLighting(l: Lighting): void;
 }
 export type CreateLandmarks = (data: CityData, opts: { scene: THREE.Scene; quality: Quality }) => Landmarks;
 
@@ -187,3 +251,20 @@ export interface TurboFlames {
   setQuality(q: Quality): void;
 }
 export type CreateTurboFlames = (opts: { quality: Quality }) => TurboFlames;
+
+// ---------- Rain: streaks around the camera and splashes on surfaces (src/fx/rain.ts) ----------
+export interface Rain {
+  /** Add to the scene once. Holds the streak and splash meshes; casts no shadows; invisible while l.rain is about 0. */
+  readonly object: THREE.Object3D;
+  /**
+   * Per frame, in every phase. Uses l.rain (amount) and l.hazeColor, l.sunColor, l.night, l.overcast (tint).
+   * Streak stretching comes from the camera's frame-to-frame motion, with a teleport guard (jumps over 6 m reset it).
+   */
+  update(dt: number, l: Lighting, camera: THREE.PerspectiveCamera): void;
+  setQuality(q: Quality): void;
+}
+export type CreateRain = (opts: {
+  quality: Quality;
+  /** main's merged world.surfaceAt (city + landmarks). Splashes skip kind 'water'; the sea shader draws its own rain rings. */
+  surfaceAt: (x: number, z: number, belowY?: number) => Surface;
+}) => Rain;
