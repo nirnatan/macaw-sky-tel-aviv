@@ -1,4 +1,5 @@
 import type { Species, TimeOfDay } from '../contracts';
+import type { Place, PlaceStyle } from '../places';
 
 interface Palette {
   fan: [string, string, string][]; // per feather: base, mid, tip
@@ -64,26 +65,44 @@ export function avatarArt(player: 'Amit' | 'Or'): string {
   return `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#2fb8d8"/><path d="M0 40c8-6 16-6 24 0s16 6 24 0 12-4 16-2v26H0z" fill="#1d8fb8"/><path d="M32 12l4.500 10 11 1.200-8.200 7.500 2.400 10.800L32 35.800 22.300 41.500l2.400-10.800-8.200-7.500 11-1.200z" fill="#fff3b0"/></svg>`;
 }
 
-export function targetIcon(id: 'school' | 'gan'): string {
-  if (id === 'school') {
-    return `<svg viewBox="0 0 40 40" aria-hidden="true">
-      <path d="M20 3v8" stroke="#6b4a3a" stroke-width="1.800" stroke-linecap="round"/><path d="M20 3l8 2.500-8 2.500z" fill="#ff5a4a"/>
-      <path d="M5 36V17l15-8.500L35 17v19z" fill="#ffd9a0" stroke="#8a5a3c" stroke-width="1.800" stroke-linejoin="round"/>
-      <path d="M2.500 18.500 20 8.500l17.500 10" fill="none" stroke="#c9553c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-      <rect x="16" y="25" width="8" height="11" rx="1.500" fill="#7a4b32"/>
-      <rect x="8" y="21" width="5" height="5" rx="1" fill="#7fc8e8"/><rect x="27" y="21" width="5" height="5" rx="1" fill="#7fc8e8"/>
-      <circle cx="20" cy="17.500" r="2.800" fill="#fff" stroke="#8a5a3c" stroke-width="1.200"/>
-    </svg>`;
-  }
-  return `<svg viewBox="0 0 40 40" aria-hidden="true">
-    <circle cx="32" cy="9" r="5" fill="#ffd23a"/><path d="M32 1.500v2M32 14.500v2M24.500 9h2M37.500 9h2" stroke="#ffd23a" stroke-width="1.800" stroke-linecap="round"/>
-    <path d="M6 36V19l14-10 14 10v17z" fill="#b8e8c4" stroke="#3d7a5a" stroke-width="1.800" stroke-linejoin="round"/>
-    <path d="M3 20.500 20 8l17 12.500" fill="none" stroke="#2fa57e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M16 36v-8a4 4 0 0 1 8 0v8z" fill="#ff9a5a"/>
-    <circle cx="11.500" cy="27" r="2.500" fill="#ff7a9a"/><circle cx="28.500" cy="27" r="2.500" fill="#ffd23a"/>
-    <path d="M11.500 29.500V35M28.500 29.500V35" stroke="#3d7a5a" stroke-width="1.500"/>
-  </svg>`;
-}
+const SCHOOL_ICON = `<svg viewBox="0 0 40 40" aria-hidden="true">
+  <path d="M20 3v8" stroke="#6b4a3a" stroke-width="1.800" stroke-linecap="round"/><path d="M20 3l8 2.500-8 2.500z" fill="#ff5a4a"/>
+  <path d="M5 36V17l15-8.500L35 17v19z" fill="#ffd9a0" stroke="#8a5a3c" stroke-width="1.800" stroke-linejoin="round"/>
+  <path d="M2.500 18.500 20 8.500l17.500 10" fill="none" stroke="#c9553c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="16" y="25" width="8" height="11" rx="1.500" fill="#7a4b32"/>
+  <rect x="8" y="21" width="5" height="5" rx="1" fill="#7fc8e8"/><rect x="27" y="21" width="5" height="5" rx="1" fill="#7fc8e8"/>
+  <circle cx="20" cy="17.500" r="2.800" fill="#fff" stroke="#8a5a3c" stroke-width="1.200"/>
+</svg>`;
+
+const GAN_ICON = `<svg viewBox="0 0 40 40" aria-hidden="true">
+  <circle cx="32" cy="9" r="5" fill="#ffd23a"/><path d="M32 1.500v2M32 14.500v2M24.500 9h2M37.500 9h2" stroke="#ffd23a" stroke-width="1.800" stroke-linecap="round"/>
+  <path d="M6 36V19l14-10 14 10v17z" fill="#b8e8c4" stroke="#3d7a5a" stroke-width="1.800" stroke-linejoin="round"/>
+  <path d="M3 20.500 20 8l17 12.500" fill="none" stroke="#2fa57e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 36v-8a4 4 0 0 1 8 0v8z" fill="#ff9a5a"/>
+  <circle cx="11.500" cy="27" r="2.500" fill="#ff7a9a"/><circle cx="28.500" cy="27" r="2.500" fill="#ffd23a"/>
+  <path d="M11.500 29.500V35M28.500 29.500V35" stroke="#3d7a5a" stroke-width="1.500"/>
+</svg>`;
+
+/** A cozy cottage; the roof and door take the place's color so two homes stay apart at a glance. */
+const homeIcon = (accent: string) => `<svg viewBox="0 0 40 40" aria-hidden="true">
+  <path d="M29 14V6.500h4.500V18z" fill="#d98a62" stroke="#7a4b32" stroke-width="1.600" stroke-linejoin="round"/>
+  <path d="M31 4.500c-1.500-1.500 1.500-2.500 0-4M34.500 5c-1.500-1.500 1.500-2.500 0-4" stroke="#fff" stroke-width="1.600" stroke-linecap="round" fill="none" opacity=".85"/>
+  <path d="M6 36V19.500l14-10 14 10V36z" fill="#fff0d2" stroke="#7a4b32" stroke-width="1.800" stroke-linejoin="round"/>
+  <path d="M2.500 21 20 8l17.500 13" fill="none" stroke="${accent}" stroke-width="4.200" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 21.500c-3-2.200-5-3.800-5-5.800a2.800 2.800 0 0 1 5-1.500 2.800 2.800 0 0 1 5 1.500c0 2-2 3.600-5 5.800z" fill="#ff6b8a" stroke="#fff" stroke-width="1.100" stroke-linejoin="round"/>
+  <path d="M15.500 36v-7a4.500 4.500 0 0 1 9 0v7z" fill="${accent}" stroke="#7a4b32" stroke-width="1.400" stroke-linejoin="round"/>
+  <circle cx="22.500" cy="31.500" r="1" fill="#fff3b0"/>
+  <rect x="8.500" y="25" width="5" height="5.500" rx="1" fill="#ffe27a" stroke="#7a4b32" stroke-width="1.200"/><rect x="26.500" y="25" width="5" height="5.500" rx="1" fill="#ffe27a" stroke="#7a4b32" stroke-width="1.200"/>
+  <path d="M11 25v5.500M8.500 27.800h5M29 25v5.500M26.500 27.800h5" stroke="#7a4b32" stroke-width=".9"/>
+</svg>`;
+
+const PLACE_ICONS: Record<PlaceStyle, (accent: string) => string> = {
+  school: () => SCHOOL_ICON,
+  gan: () => GAN_ICON,
+  home: homeIcon,
+};
+
+export const placeIcon = (place: Pick<Place, 'style' | 'color'>) => PLACE_ICONS[place.style](place.color);
 
 const sunRays = (cx: number, cy: number, from: number, to: number, angles: number[], color: string) =>
   angles.map((a) => `<path d="M${cx} ${cy - from}v${from - to}" stroke="${color}" stroke-width="2.600" stroke-linecap="round" transform="rotate(${a} ${cx} ${cy})"/>`).join('');

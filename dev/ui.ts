@@ -1,4 +1,5 @@
-import type { AudioMix, HudFrame, PlayerName, Species, TargetHud, TimeOfDay } from '../src/contracts';
+import type { AudioMix, HudFrame, PlayerName, Species, TargetHud, TargetId, TimeOfDay } from '../src/contracts';
+import { PLACES } from '../src/places';
 import { createAudio } from '../src/audio';
 import { createInput } from '../src/input';
 import { createUI, HINT_KEYS } from '../src/ui';
@@ -46,15 +47,15 @@ await audio.unlock();
 audio.found();
 console.log('play', JSON.stringify(choice));
 
-const found = { school: false, gan: false };
+const found = Object.fromEntries(PLACES.map(({ id }) => [id, id === 'school' || id === 'newHome'])) as Record<TargetId, boolean>;
 let rings = 3;
 let forcedHint: string | null = null;
 let hintCycle = true;
 ui.showHud(true);
 input.setTouchControlsVisible(true);
 
-const centerX = (data.targets.school.x + data.targets.gan.x) / 2;
-const centerZ = (data.targets.school.z + data.targets.gan.z) / 2;
+const centerX = PLACES.reduce((sum, { id }) => sum + data.targets[id].x, 0) / PLACES.length;
+const centerZ = PLACES.reduce((sum, { id }) => sum + data.targets[id].z, 0) / PLACES.length;
 
 const frameAt = (t: number): HudFrame => {
   const phase = (t / 40) % 1; // radius shrinks from far to near every 40 s
@@ -63,7 +64,7 @@ const frameAt = (t: number): HudFrame => {
   const x = centerX + Math.cos(angle) * radius;
   const z = centerZ + Math.sin(angle) * radius;
   const heading = angle + Math.PI; // direction of travel along the circle
-  const targets: TargetHud[] = (['school', 'gan'] as const).map((id) => {
+  const targets: TargetHud[] = PLACES.map(({ id }) => {
     const dx = data.targets[id].x - x, dz = data.targets[id].z - z;
     const absolute = Math.atan2(dx, -dz);
     return { id, found: found[id], bearing: Math.atan2(Math.sin(absolute - heading), Math.cos(absolute - heading)), distance: Math.hypot(dx, dz) };
@@ -83,10 +84,9 @@ const addButton = (label: string, fn: () => void) => {
 };
 addButton('T: next time', () => { input.state.cycleTime = true; });
 addButton('R: toggle rain', () => { input.state.toggleRain = true; });
-addButton('celebrate school', () => { found.school = true; ui.celebrate('school', player); audio.found(); });
-addButton('celebrate gan', () => { found.gan = true; ui.celebrate('gan', player); audio.found(); });
-addButton('celebrate all', () => { found.school = found.gan = true; ui.celebrate('all', player); audio.found(); });
-addButton('reset found', () => { found.school = found.gan = false; });
+for (const place of PLACES) addButton(`celebrate ${place.id}`, () => { found[place.id] = true; ui.celebrate(place.id, player); audio.found(); });
+addButton('celebrate all', () => { for (const place of PLACES) found[place.id] = true; ui.celebrate('all', player); audio.found(); });
+addButton('reset found', () => { for (const place of PLACES) found[place.id] = false; });
 addButton('toast', () => ui.toast('טבעת זהב! Golden ring!'));
 addButton('ring +1', () => { rings++; audio.ring(); });
 for (const [label, fn] of [

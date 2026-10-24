@@ -1,10 +1,13 @@
-import type { PlayerName } from '../contracts';
-import { targetIcon } from './art';
+import type { PlayerName, TargetId } from '../contracts';
+import { PLACES, placeById, type Place } from '../places';
+import { placeIcon } from './art';
 import { createConfetti } from './confetti';
 import { bilingual, el } from './dom';
 import { celebrationText } from './strings';
 
 const STAR_TROPHY = `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4l8.500 17.500 19 2.600-13.800 13.400 3.400 19L32 47.500 14.900 56.500l3.400-19L4.500 24.100l19-2.600z" fill="#ffd23a" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><path d="M32 12l5 11 12 1.600-8.700 8.400" fill="none" stroke="#fff7c2" stroke-width="2.500" stroke-linecap="round" opacity=".8"/></svg>`;
+
+const placeBadge = (place: Place) => `<div style="--place: ${place.color}">${placeIcon(place)}</div>`;
 
 const DURATION_MS = { single: 5200, all: 10000 };
 
@@ -14,21 +17,25 @@ export function createCelebrations(parent: HTMLElement) {
   const dismiss = () => { active?.stop(); active = null; };
 
   return {
-    celebrate(target: 'school' | 'gan' | 'all', player: PlayerName) {
+    celebrate(target: TargetId | 'all', player: PlayerName) {
       dismiss();
       const { title, sub } = celebrationText(target, player);
-      const node = el('div', 'mc-celebrate');
+      const place = target === 'all' ? null : placeById(target);
+      const warm = place?.style === 'home';
+      const node = el('div', warm ? 'mc-celebrate warm' : 'mc-celebrate');
+      if (place) node.style.setProperty('--place', place.color);
       node.innerHTML = `
         <canvas class="mc-confetti"></canvas>
         <div class="mc-cel-card">
           <div class="mc-rays"></div>
-          <div class="mc-cel-icon">${target === 'all' ? STAR_TROPHY : targetIcon(target)}</div>
+          <div class="mc-cel-icon">${place ? placeIcon(place) : STAR_TROPHY}</div>
           <div class="mc-cel-title mc-bi">${bilingual(title)}</div>
           ${sub ? `<div class="mc-cel-sub mc-bi">${bilingual(sub)}</div>` : ''}
+          ${place ? '' : `<div class="mc-cel-places">${PLACES.map(placeBadge).join('')}</div>`}
         </div>`;
       parent.append(node);
 
-      const confetti = createConfetti(node.querySelector('canvas')!);
+      const confetti = createConfetti(node.querySelector('canvas')!, warm ? 'warm' : 'party');
       const timers: number[] = [];
       const after = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
       const cannons = () => { confetti.burst(0.05, 1, -1.15, 70); confetti.burst(0.95, 1, -Math.PI + 1.15, 70); };

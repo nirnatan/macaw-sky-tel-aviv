@@ -1,15 +1,21 @@
-const COLORS = ['#ff6b4a', '#ffc928', '#26c6a0', '#4aa3ff', '#ff7eb6', '#9b6bff', '#ffffff', '#ff9a2e'];
+const PALETTES = {
+  party: ['#ff6b4a', '#ffc928', '#26c6a0', '#4aa3ff', '#ff7eb6', '#9b6bff', '#ffffff', '#ff9a2e'],
+  warm: ['#ff6b8a', '#ff9a6b', '#ffc928', '#ffe9a8', '#ff7eb6', '#ffffff', '#ff5a5a', '#ffb3c6'],
+} as const;
+export type ConfettiTheme = keyof typeof PALETTES;
 const GRAVITY = 1100; // px/s^2 at dpr 1
 const TERMINAL_SPEED = 420;
 
 interface Piece {
   x: number; y: number; vx: number; vy: number; rotation: number; spin: number;
-  size: number; color: string; shape: 'rect' | 'circle' | 'star'; flip: number; flipSpeed: number;
+  size: number; color: string; shape: 'rect' | 'circle' | 'star' | 'heart'; flip: number; flipSpeed: number;
 }
 
 const random = (min: number, max: number) => min + Math.random() * (max - min);
 
-export function createConfetti(canvas: HTMLCanvasElement) {
+export function createConfetti(canvas: HTMLCanvasElement, theme: ConfettiTheme = 'party') {
+  const colors = PALETTES[theme];
+  const shapes = theme === 'warm' ? (['rect', 'circle', 'heart', 'heart'] as const) : (['rect', 'rect', 'circle', 'star'] as const);
   const ctx = canvas.getContext('2d')!;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = canvas.clientWidth * dpr;
@@ -23,8 +29,8 @@ export function createConfetti(canvas: HTMLCanvasElement) {
     const v = speed * random(0.45, 1);
     return {
       x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, rotation: random(0, 6.28), spin: random(-9, 9),
-      size: random(7, 14) * dpr, color: COLORS[Math.floor(Math.random() * COLORS.length)]!,
-      shape: (['rect', 'rect', 'circle', 'star'] as const)[Math.floor(Math.random() * 4)]!, flip: random(0, 6.28), flipSpeed: random(5, 14),
+      size: random(7, 14) * dpr, color: colors[Math.floor(Math.random() * colors.length)]!,
+      shape: shapes[Math.floor(Math.random() * shapes.length)]!, flip: random(0, 6.28), flipSpeed: random(5, 14),
     };
   };
 
@@ -36,6 +42,15 @@ export function createConfetti(canvas: HTMLCanvasElement) {
       ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
     ctx.closePath(); ctx.fill();
+  };
+
+  const drawHeart = (size: number) => {
+    const s = size / 28;
+    ctx.beginPath();
+    ctx.moveTo(0, 9 * s);
+    ctx.bezierCurveTo(-18 * s, -2 * s, -9 * s, -14 * s, 0, -6 * s);
+    ctx.bezierCurveTo(9 * s, -14 * s, 18 * s, -2 * s, 0, 9 * s);
+    ctx.fill();
   };
 
   const tick = (now: number) => {
@@ -58,6 +73,7 @@ export function createConfetti(canvas: HTMLCanvasElement) {
       ctx.fillStyle = p.color;
       if (p.shape === 'rect') ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
       else if (p.shape === 'circle') { ctx.beginPath(); ctx.arc(0, 0, p.size / 3, 0, Math.PI * 2); ctx.fill(); }
+      else if (p.shape === 'heart') drawHeart(p.size * 1.5);
       else drawStar(p.size);
       ctx.restore();
     }
