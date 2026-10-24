@@ -318,6 +318,18 @@ if (env.MEMORY !== '0') {
     console.log(`memory @${r}`, JSON.stringify(result[`memory@${r}`]));
   }
 }
+if (env.CYCLE) { // setQuality round trip, the way main switches tiers
+  result.cycle = [];
+  for (const q of env.CYCLE.split(",")) {
+    await page.evaluate((q) => { const g = window.game; g.env.setQuality(q); g.city.setQuality(q); g.rain.setQuality(q); g.env.setSize(innerWidth, innerHeight); }, q);
+    await page.evaluate(pose);
+    await page.waitForTimeout(2500);
+    const state = await page.evaluate(() => ({ ratio: window.game.renderer.getPixelRatio(), maxPixelRatio: window.game.env.maxPixelRatio, textures: window.__glmem.textures.size, renderbuffers: window.__glmem.renderbuffers.size, programs: window.game.renderer.info.programs.length }));
+    result.cycle.push({ quality: q, ...state });
+    console.log("cycle", q, JSON.stringify(state));
+    if (shotDir) await page.screenshot({ path: `${shotDir}/cycle-${result.cycle.length}-${q}.png` });
+  }
+}
 if (env.CHURN) { // dynamic resolution churn: GL allocations must come back to the same totals
   const totals = () => page.evaluate(() => { const m = window.__glmem; const sum = (it) => [...it].reduce((s, v) => s + v, 0); return { textures: m.textures.size, renderbuffers: m.renderbuffers.size, textureMB: +(sum([...m.textures.values()].map((e) => Object.values(e.levels).reduce((a, b) => a + b, 0))) / 2 ** 20).toFixed(2), maxPixelRatio: window.game.env.maxPixelRatio, ratio: window.game.renderer.getPixelRatio() }; });
   await setRatio(ratios[0]); await page.waitForTimeout(300);

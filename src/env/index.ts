@@ -121,6 +121,7 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
     tier = TIERS[q];
     renderer.setPixelRatio(Math.min(requestedRatio, maxPixelRatio()));
     sun.setShadowQuality(tier.shadowMapSize, tier.shadowRadius);
+    renderer.shadowMap.needsUpdate = true; // the new map must exist before a skipped frame samples it
     sky.setCloudDetail(tier.detail);
     sky.setStarDensity(tier.starDensity);
     water.setDetail(tier.detail);
