@@ -2,6 +2,9 @@
 // World frame (src/geo.ts): meters, +x east, +z south, +y up. Sea level / ground is y = 0.
 import type * as THREE from 'three';
 import type { CityData, Ring } from './world/data';
+import type { TargetId } from './places';
+
+export type { TargetId };
 
 export type Quality = 'low' | 'medium' | 'high';
 
@@ -185,7 +188,7 @@ export type PlayerName = 'Amit' | 'Or';
 export interface Settings extends Conditions { muted: boolean; music: boolean; quality: Quality | 'auto' }
 export interface StartChoice { player: PlayerName; species: Species }
 export interface TargetHud {
-  id: 'school' | 'gan';
+  id: TargetId;
   found: boolean;
   /** Bearing relative to the bird's heading in radians (0 = straight ahead, positive = to the right). */
   bearing: number;
@@ -206,7 +209,7 @@ export interface UI {
   showHud(visible: boolean): void;
   updateHud(f: HudFrame): void;
   /** Big celebration overlay ("Amit found David Yellin school!"). */
-  celebrate(target: 'school' | 'gan' | 'all', player: PlayerName): void;
+  celebrate(target: TargetId | 'all', player: PlayerName): void;
   toast(text: string): void;
   /** The UI owns the pause menu (opened by input.pause or a HUD button) and reports changes. */
   onPause(cb: (paused: boolean) => void): void;
@@ -217,7 +220,6 @@ export interface UI {
 export type CreateUI = (opts: { root: HTMLElement; data: CityData; input: Input }) => UI;
 
 // ---------- Landmarks: the two special places, golden rings, ambient life (src/game/landmarks/) ----------
-export type TargetId = 'school' | 'gan';
 export interface LandingSpot { id: TargetId; nameHe: string; nameEn: string; position: THREE.Vector3; radius: number }
 export interface Landmarks {
   readonly group: THREE.Group;

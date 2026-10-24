@@ -58,7 +58,7 @@ async function boot() {
   await nextFrame();
   const city = createCity(data, { scene, quality });
   scene.add(city.group);
-  ui.setLoading(0.8, 'מקשטים את הגן ובית הספר… · Decorating the school and the gan…');
+  ui.setLoading(0.8, 'מקשטים את המקומות המיוחדים… · Decorating the special places…');
   await nextFrame();
   const landmarks = createLandmarks(data, { scene, quality });
   const audio = createAudio();

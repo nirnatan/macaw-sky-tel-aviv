@@ -2,15 +2,13 @@
 // Format is decoded only by src/world/data.ts; see that file for the layout.
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { LAT0, LON0, project } from '../src/geo.ts';
+import { PLACES } from '../src/places.ts';
 
 const RAW = new URL('../data-raw/', import.meta.url);
 const OUT = new URL('../public/data/', import.meta.url);
 const Q = 2; // coordinates stored as int16 in half-meter units
 
-const TARGETS = {
-  school: { lat: 32.111514, lon: 34.819389, buildingName: 'David Yelin School' },
-  gan: { lat: 32.109808, lon: 34.818717, clearRadius: 16 }, // not mapped in OSM; the game places its own building here
-};
+const TARGETS = PLACES.map((p) => ({ ...p, ...p.footprint }));
 
 async function loadLayer(layer) {
   const files = (await readdir(RAW)).filter((f) => f.startsWith(layer + '_'));
@@ -73,7 +71,7 @@ function polygonsOf(el) {
 }
 
 const centroid = (r) => { let x = 0, z = 0; for (let i = 0; i < r.length; i += 2) { x += r[i]; z += r[i + 1]; } return [(2 * x) / r.length, (2 * z) / r.length]; };
-for (const t of Object.values(TARGETS)) [t.x, t.z] = project(t.lat, t.lon);
+for (const t of TARGETS) [t.x, t.z] = project(t.lat, t.lon);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
 const hash = (n) => { let x = n | 0; x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); x = Math.imul(x ^ (x >>> 16), 0x45d9f3b); return ((x ^ (x >>> 16)) >>> 0) / 4294967296; };
@@ -138,8 +136,8 @@ async function buildBuildings() {
       const height = clamp(heightOf(tags, el.id, footprint), 2.5, 400);
       const minHeight = num(tags.min_height) ?? (num(tags['building:min_level']) ?? 0) * 3.3;
       const [cx, cz] = centroid(rings[0]);
-      if (Object.values(TARGETS).some((t) => t.clearRadius && Math.hypot(cx - t.x, cz - t.z) < t.clearRadius)) continue;
-      const isTarget = Object.values(TARGETS).some((t) => t.buildingName && tags['name:en'] === t.buildingName);
+      if (TARGETS.some((t) => t.kind === 'custom' && Math.hypot(cx - t.x, cz - t.z) < t.clearRadius)) continue;
+      const isTarget = TARGETS.some((t) => t.kind === 'osmName' && tags['name:en'] === t.nameEn);
       const kind = isTarget ? 'target' : classify(tags, height, footprint);
       recs.push({ rings, height, minHeight: Math.min(minHeight, height - 1), kind, id: el.id, isPart: !!tags['building:part'] });
     }
@@ -269,10 +267,14 @@ await buildRoads();
 const coastWays = await buildAreas();
 await buildTrees();
 const { coast, sea } = buildSea(coastWays);
+const pointInRing = (ring, x, z) => { let c = false; for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) { const xi = ring[i], zi = ring[i + 1], xj = ring[j], zj = ring[j + 1]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
 const targets = {};
-for (const [key, t] of Object.entries(TARGETS)) {
-  const b = recs.find((r) => r.kind === 'target' && t.buildingName);
-  targets[key] = { x: Math.round(t.x * 10) / 10, z: Math.round(t.z * 10) / 10, building: t.buildingName && b ? { ring: b.rings[0], height: b.height } : null };
+for (const t of TARGETS) {
+  const b = t.kind === 'osmName' ? recs.find((r) => r.kind === 'target')
+    : t.kind === 'containing' ? recs.find((r) => !r.isPart && pointInRing(r.rings[0], t.x, t.z)) ?? recs.find((r) => pointInRing(r.rings[0], t.x, t.z))
+    : null;
+  if (t.kind !== 'custom' && !b) throw new Error(`no building found for ${t.id}`);
+  targets[t.id] = { x: Math.round(t.x * 10) / 10, z: Math.round(t.z * 10) / 10, building: b ? { ring: b.rings[0], height: b.height } : null };
 }
 await writeFile(new URL('world.json', OUT), JSON.stringify({ origin: { lat: LAT0, lon: LON0 }, coast, sea, targets }));
 console.log('targets', JSON.stringify(Object.fromEntries(Object.entries(targets).map(([k, v]) => [k, { x: v.x, z: v.z, h: v.building?.height }]))));

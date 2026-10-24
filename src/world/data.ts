@@ -1,4 +1,6 @@
 // Decodes the binaries written by scripts/build-data.mjs.
+import type { TargetId } from '../places';
+
 // Rings are flat [x0, z0, x1, z1, ...] in meters (see src/geo.ts). Outer rings have positive
 // shoelace sum (x_i*z_{i+1} - x_{i+1}*z_i), holes negative. Rings are not closed (no repeated first point).
 
@@ -26,7 +28,7 @@ export interface CityData {
   trees: Float32Array; // flat [x, z, ...]
   coast: Ring; // coastline polyline, north to south
   sea: Ring; // sea polygon (coast extended 40 km and closed far west)
-  targets: { school: Target; gan: Target };
+  targets: Record<TargetId, Target>; // keyed by src/places.ts
 }
 
 class Reader {
