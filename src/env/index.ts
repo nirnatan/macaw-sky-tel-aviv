@@ -36,6 +36,7 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
 
   const size = renderer.getSize(new THREE.Vector2());
   let tier = TIERS[quality];
+  let requestedRatio = Infinity; // what main last asked for; each tier clamps it to its own cap
   let speed = 0;
   let time = 0;
   const a = atmosphereUniforms;
@@ -114,10 +115,13 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
     p.setAoColor(w.row.aoColor);
   }
 
+  const maxPixelRatio = () => Math.min(window.devicePixelRatio, tier.maxPixelRatio);
+
   function buildPost(q: Quality) {
     tier = TIERS[q];
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, tier.maxPixelRatio));
+    renderer.setPixelRatio(Math.min(requestedRatio, maxPixelRatio()));
     sun.setShadowQuality(tier.shadowMapSize, tier.shadowRadius);
+    renderer.shadowMap.needsUpdate = true; // the new map must exist before a skipped frame samples it
     sky.setCloudDetail(tier.detail);
     sky.setStarDensity(tier.starDensity);
     water.setDetail(tier.detail);
@@ -158,6 +162,7 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
       applyWeather();
       applyGrade(post);
       sun.follow(focus);
+      renderer.shadowMap.autoUpdate = dt === 0 || frame % tier.shadowEvery === 0; // dt 0 is the warm-up, which must draw every caster
       const changing = step.blending || Math.abs(w.overcast - bakedOvercast) > 0.01;
       if (step.blendEnded || (changing && frame % tier.bakeEvery === 0)) bake();
     },
@@ -175,6 +180,14 @@ export const createEnvironment: CreateEnvironment = ({ renderer, scene, camera, 
     setQuality(q) {
       post.composer.dispose();
       post = buildPost(q);
+    },
+    get maxPixelRatio() { return maxPixelRatio(); },
+    setPixelRatio(ratio) {
+      requestedRatio = ratio;
+      const r = Math.min(ratio, maxPixelRatio());
+      if (r === renderer.getPixelRatio()) return;
+      renderer.setPixelRatio(r);
+      post.composer.setSize(size.x, size.y); // reallocates the targets once, at the new size
     },
     setSpeedEffect(amount) {
       speed = THREE.MathUtils.clamp(amount, 0, 1);

@@ -2,10 +2,10 @@
 // One mesh per chunk shares a single material; a per-vertex surface type drives the look in the shader.
 import * as THREE from 'three';
 import type { AreaKind, CityData, Ring, RoadKind } from './data';
-import { ChunkGrid, GeometryWriter, pointInRing, polylineLength, ringCentroid, triangulate } from './geom';
+import { ChunkGrid, GeometryWriter, pointInRing, polylineLength, releaseAfterUpload, ringCentroid, triangulate } from './geom';
 import { addLampStations, LAMP_POOL_GLSL } from './lamps';
 import { RIVER_HALF_WIDTH } from './physics';
-import { after, CITY_UNIFORMS_GLSL, type CityUniforms, srgb, withWorldPos } from './shaders';
+import { after, CITY_UNIFORMS_GLSL, type CityUniforms, packTint, srgb, withTint, withWorldPos } from './shaders';
 
 const SURF = { fill: 0, asphalt: 1, pavement: 2, rail: 3, water: 4, vegetation: 5, sand: 6, concrete: 7 } as const;
 type Surf = (typeof SURF)[keyof typeof SURF];
@@ -41,7 +41,7 @@ const BRIDGE_CONCRETE = srgb('#b9b1a3');
 const BRIDGE_HEIGHT = 5;
 const GROUND_RADIUS = 13000;
 
-const LAYOUT = [{ name: 'position', size: 3 }, { name: 'color', size: 3 }, { name: 'aSurf', size: 4 }];
+const LAYOUT = [{ name: 'position', size: 3 }, { name: 'aTint', size: 1 }, { name: 'aSurf', size: 4 }];
 
 export interface Flats {
   ground: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -90,8 +90,8 @@ export function buildFlats(data: CityData, grid: ChunkGrid, uniforms: CityUnifor
 
 
 function fillPolygon(w: GeometryWriter, rings: Ring[], y: number, color: Rgb, type: Surf): void {
-  const base = w.vertexCount;
-  for (const r of rings) for (let i = 0; i < r.length; i += 2) w.vertex(r[i], y, r[i + 1], color[0], color[1], color[2], 0, 0, type, 0);
+  const base = w.vertexCount, tint = packTint(color);
+  for (const r of rings) for (let i = 0; i < r.length; i += 2) w.vertex(r[i], y, r[i + 1], tint, 0, 0, type, 0);
   const tris = triangulate(rings);
   for (let i = 0; i < tris.length; i += 3) w.triUp(base + tris[i], base + tris[i + 1], base + tris[i + 2]);
 }
@@ -118,18 +118,19 @@ function ribbon(
     lx[i] = px + nx * miter; lz[i] = pz + nz * miter; rx[i] = px - nx * miter; rz[i] = pz - nz * miter;
   }
   let w: GeometryWriter | null = null, prevL = 0, prevR = 0, chunk = -1;
+  const tint = packTint(color);
   for (let i = 0; i < n - 1; i++) {
     const c = grid.indexOf((pts[2 * i] + pts[2 * i + 2]) / 2, (pts[2 * i + 1] + pts[2 * i + 3]) / 2);
     if (c !== chunk || !w) {
       chunk = c;
       w = writerAt(pts[2 * i], pts[2 * i + 1]);
       const y = yAt(s[i]);
-      prevL = w.vertex(lx[i], y, lz[i], color[0], color[1], color[2], s[i], halfWidth, type, pavedHalf);
-      prevR = w.vertex(rx[i], y, rz[i], color[0], color[1], color[2], s[i], -halfWidth, type, pavedHalf);
+      prevL = w.vertex(lx[i], y, lz[i], tint, s[i], halfWidth, type, pavedHalf);
+      prevR = w.vertex(rx[i], y, rz[i], tint, s[i], -halfWidth, type, pavedHalf);
     }
     const y = yAt(s[i + 1]);
-    const L = w.vertex(lx[i + 1], y, lz[i + 1], color[0], color[1], color[2], s[i + 1], halfWidth, type, pavedHalf);
-    const R = w.vertex(rx[i + 1], y, rz[i + 1], color[0], color[1], color[2], s[i + 1], -halfWidth, type, pavedHalf);
+    const L = w.vertex(lx[i + 1], y, lz[i + 1], tint, s[i + 1], halfWidth, type, pavedHalf);
+    const R = w.vertex(rx[i + 1], y, rz[i + 1], tint, s[i + 1], -halfWidth, type, pavedHalf);
     w.triUp(prevL, prevR, L);
     w.triUp(prevR, R, L);
     if (skirts) {
@@ -140,12 +141,12 @@ function ribbon(
   }
 }
 function addSkirt(w: GeometryWriter, ax: number, az: number, ay: number, bx: number, bz: number, by: number, cx: number, cz: number, dx: number, dz: number): void {
-  const c = BRIDGE_CONCRETE, drop = 1.6;
+  const tint = packTint(BRIDGE_CONCRETE), drop = 1.6;
   for (const [x0, z0, x1, z1] of [[ax, az, bx, bz], [cx, cz, dx, dz]]) {
-    const a = w.vertex(x0, ay, z0, c[0], c[1], c[2], 0, 0, SURF.concrete, 0);
-    const b = w.vertex(x1, by, z1, c[0], c[1], c[2], 0, 0, SURF.concrete, 0);
-    const b2 = w.vertex(x1, by - drop, z1, c[0], c[1], c[2], 0, 0, SURF.concrete, 0);
-    const a2 = w.vertex(x0, ay - drop, z0, c[0], c[1], c[2], 0, 0, SURF.concrete, 0);
+    const a = w.vertex(x0, ay, z0, tint, 0, 0, SURF.concrete, 0);
+    const b = w.vertex(x1, by, z1, tint, 0, 0, SURF.concrete, 0);
+    const b2 = w.vertex(x1, by - drop, z1, tint, 0, 0, SURF.concrete, 0);
+    const a2 = w.vertex(x0, ay - drop, z0, tint, 0, 0, SURF.concrete, 0);
     w.quad(a, b, b2, a2);
     w.quad(a, a2, b2, b); // both windings: skirts are seen from either side of the bridge
   }
@@ -196,6 +197,7 @@ function buildGround(coast: Ring): Flats['ground'] {
   g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   g.setIndex(index);
   g.computeBoundingSphere();
+  releaseAfterUpload(g.attributes.position as THREE.BufferAttribute, g.index!);
   const mesh = new THREE.Mesh(g, groundMaterial());
   mesh.receiveShadow = true;
   mesh.matrixAutoUpdate = false;
@@ -238,10 +240,11 @@ function groundMaterial(): THREE.MeshStandardMaterial {
 const WETTABLE_GLSL = 'const float WETTABLE[8] = float[8](0.8, 1.0, 0.9, 0.6, 0.0, 0.35, 0.45, 0.75);\n';
 
 function flatsMaterial(time: { value: number }, uniforms: CityUniforms): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = time;
     Object.assign(shader.uniforms, uniforms);
+    withTint(shader);
     withWorldPos(shader, CITY_UNIFORMS_GLSL + LAMP_POOL_GLSL + WETTABLE_GLSL);
     shader.vertexShader = after(shader.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aSurf;\nvarying vec4 vSurf;'), 'begin_vertex', 'vSurf = aSurf;');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec4 vSurf;\nuniform float uTime;');

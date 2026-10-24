@@ -50,3 +50,17 @@ export function srgb(hex: string | number): [number, number, number] {
   const c = new THREE.Color(hex);
   return [c.r, c.g, c.b];
 }
+
+/** A linear color as one exact float per vertex: three sqrt-encoded 8-bit channels, decoded by withTint. */
+export function packTint(c: [number, number, number]): number {
+  const q = (v: number) => Math.min(255, Math.round(Math.sqrt(Math.max(0, v)) * 255));
+  return q(c[0]) * 65536 + q(c[1]) * 256 + q(c[2]);
+}
+/** Reads the `aTint` attribute into diffuseColor ahead of every color_fragment patch. */
+export function withTint(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  shader.vertexShader = after(shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float aTint;\nvarying vec3 vTint;'), 'begin_vertex', /* glsl */ `
+    uint tint = uint(aTint);
+    vTint = vec3(uvec3(tint >> 16, tint >> 8, tint) & 255u) / 255.0;
+    vTint *= vTint;`);
+  shader.fragmentShader = after(shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vTint;'), 'map_fragment', 'diffuseColor.rgb *= vTint;');
+}

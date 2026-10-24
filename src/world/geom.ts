@@ -150,11 +150,19 @@ export class GeometryWriter {
       g.setAttribute(l.name, new THREE.InterleavedBufferAttribute(buf, l.size, offset));
       offset += l.size;
     }
-    g.setIndex(new THREE.BufferAttribute(this.index.slice(0, this.indexCount), 1));
+    const index = this.index.subarray(0, this.indexCount);
+    g.setIndex(new THREE.BufferAttribute(this.vertexCount < 0xffff ? new Uint16Array(index) : index.slice(), 1)); // 0xffff is the primitive-restart index
     g.computeBoundingSphere();
     g.computeBoundingBox();
+    releaseAfterUpload(buf, g.index!);
     return g;
   }
+}
+
+/** Static city buffers keep no CPU copy once three has uploaded them; physics reads its own footprints, never these.
+ *  The cost: after a lost WebGL context these buffers cannot be re-uploaded, so the page has to reload. */
+export function releaseAfterUpload(...buffers: (THREE.BufferAttribute | THREE.InterleavedBuffer)[]): void {
+  for (const b of buffers) b.onUpload(function (this: typeof b) { this.array = this.array.slice(0, 0); });
 }
 function grow<T extends Float32Array | Uint32Array>(a: T): T {
   const b = new (a.constructor as new (n: number) => T)(a.length * 2);

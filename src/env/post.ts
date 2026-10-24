@@ -67,6 +67,12 @@ class SpeedEffect extends Effect {
 
 export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, tier: Tier) {
   const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
+  const ldrBuffer = !tier.ao; // without AO the second buffer only ever holds tone-mapped color: 8-bit sRGB, no depth
+  if (ldrBuffer) {
+    composer.outputBuffer.texture.type = THREE.UnsignedByteType;
+    composer.outputBuffer.texture.colorSpace = THREE.SRGBColorSpace;
+    composer.outputBuffer.depthBuffer = false;
+  }
   composer.addPass(new RenderPass(scene, camera));
 
   let ao: N8AOPostPass | null = null;
@@ -82,8 +88,11 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
     blendFunction: BlendFunction.ADD, mipmapBlur: true, levels: tier.bloomLevels,
     luminanceThreshold: 1.1, luminanceSmoothing: 0.4, intensity: 0.4, radius: 0.6, // the threshold is fixed for every time of day; night glows target 1.5+
   });
+  bloom.luminancePass.resolution.scale = tier.bloomScale;
   const grade = new GradeEffect();
-  composer.addPass(new EffectPass(camera, bloom, new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }), grade));
+  const gradePass = new EffectPass(camera, bloom, new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }), grade);
+  gradePass.dithering = ldrBuffer; // dither once, at the first 8-bit write
+  composer.addPass(gradePass);
 
   const speed = new SpeedEffect();
   const speedPass = new EffectPass(camera, speed);
@@ -92,7 +101,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
 
   const aa = tier.antialias === 'smaa' ? new SMAAEffect({ preset: SMAAPreset.HIGH }) : new FXAAEffect();
   const aaPass = new EffectPass(camera, aa);
-  aaPass.dithering = true;
+  aaPass.dithering = !ldrBuffer;
   composer.addPass(aaPass);
 
   return {

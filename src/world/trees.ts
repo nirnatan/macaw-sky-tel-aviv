@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { AreaKind, CityData, RoadKind } from './data';
-import { ChunkGrid, hash2, ringArea, rng, samplePointsInPolygon, walkPolyline } from './geom';
+import { ChunkGrid, hash2, releaseAfterUpload, ringArea, rng, samplePointsInPolygon, walkPolyline } from './geom';
 import type { CityPhysics } from './physics';
 import { after, srgb } from './shaders';
 
@@ -114,6 +114,7 @@ export function buildTrees(data: CityData, grid: ChunkGrid, physics: CityPhysics
       mesh.receiveShadow = false;
       mesh.matrixAutoUpdate = false;
       mesh.computeBoundingSphere();
+      releaseAfterUpload(mesh.instanceMatrix, mesh.instanceColor!);
       byChunk[chunk].add(mesh);
       instanced.push({ mesh, max: n });
     });

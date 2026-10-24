@@ -2,7 +2,7 @@
 // flats shader paints under them. Both read LAMP, so a sprite always has its pool and a pool always has its sprite.
 import * as THREE from 'three';
 import type { Ring } from './data';
-import { walkPolyline } from './geom';
+import { releaseAfterUpload, walkPolyline } from './geom';
 import type { CityUniforms } from './shaders';
 
 export const LAMP = {
@@ -128,6 +128,7 @@ export function buildLamps(stations: number[], uniforms: CityUniforms): Lamps {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
   geometry.computeBoundingSphere();
+  releaseAfterUpload(geometry.attributes.position as THREE.BufferAttribute);
 
   const screenH = { value: 720 };
   const material = new THREE.ShaderMaterial({

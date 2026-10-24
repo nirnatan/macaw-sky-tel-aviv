@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Building, BuildingKind, CityData, Ring } from './data';
-import { ChunkGrid, GeometryWriter, hash01, insetRing, ringArea, ringCentroid, rng, samplePointsInPolygon, triangulate } from './geom';
+import { ChunkGrid, GeometryWriter, hash01, insetRing, releaseAfterUpload, ringArea, ringCentroid, rng, samplePointsInPolygon, triangulate } from './geom';
 import type { Footprint } from './physics';
-import { after, CITY_UNIFORMS_GLSL, type CityUniforms, srgb, withWorldPos } from './shaders';
+import { after, CITY_UNIFORMS_GLSL, type CityUniforms, packTint, srgb, withTint, withWorldPos } from './shaders';
 
 type Rgb = [number, number, number];
 /** Surface types the facade shader switches on (integer part of aFacade.w; the fraction carries wall length / 1000). */
@@ -27,22 +27,25 @@ const STYLE: Record<BuildingKind, { walls: Rgb[]; roof: Rgb; wall: Facade; roofT
 const PARAPET = 0.9;
 const PARAPET_INSET = 0.45;
 const ROOF_BOX = { w: 3.2, d: 2.6, h: 2.4 };
-const LAYOUT = [{ name: 'position', size: 3 }, { name: 'color', size: 3 }, { name: 'aFacade', size: 4 }];
+const LAYOUT = [{ name: 'position', size: 3 }, { name: 'aTint', size: 1 }, { name: 'aFacade', size: 4 }];
 
 export interface Buildings {
   chunks: (THREE.Mesh | null)[];
-  heaters: (THREE.InstancedMesh | null)[];
-  acUnits: (THREE.InstancedMesh | null)[];
+  heaters: (Clutter | null)[];
+  acUnits: (Clutter | null)[];
   clutterMaterial: THREE.MeshStandardMaterial;
   footprints: Footprint[];
 }
+
+/** Rooftop instances of one kind in one chunk; the creation tier decides how many of the `full` set exist. */
+export interface Clutter { mesh: THREE.InstancedMesh; full: number }
 
 /** OSM heights with the one absurd outlier (6.5 km) replaced and the rest capped at Tel Aviv's tallest. */
 function buildingHeight(b: Building): number {
   return b.height > 300 ? 12 + b.seed * 6 : Math.min(b.height, 260);
 }
 
-export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUniforms): Buildings {
+export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUniforms, clutterKeep: number): Buildings {
   const writers: GeometryWriter[] = Array.from({ length: grid.count }, () => new GeometryWriter(LAYOUT, 512));
   const heaterMatrices: number[][] = Array.from({ length: grid.count }, () => []);
   const acMatrices: number[][] = Array.from({ length: grid.count }, () => []);
@@ -60,8 +63,8 @@ export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUn
     const w = writers[chunk];
     const style = STYLE[b.kind];
     const tint = 0.94 + hash01(b.seed * 1000 + 1) * 0.1;
-    const wallColor = scale(style.walls[Math.floor(b.seed * style.walls.length) % style.walls.length], tint);
-    const roofColor = scale(style.roof, 0.92 + hash01(b.seed * 1000 + 2) * 0.14);
+    const wallColor = packTint(scale(style.walls[Math.floor(b.seed * style.walls.length) % style.walls.length], tint));
+    const roofColor = packTint(scale(style.roof, 0.92 + hash01(b.seed * 1000 + 2) * 0.14));
     footprints.push({ rings: b.rings, height: h, minHeight: b.minHeight });
 
     const wallInset = 0.005 + (index % 16) * 0.004; // outline edges shared with a part or a neighbour must never give coplanar walls
@@ -99,8 +102,8 @@ export function buildBuildings(data: CityData, grid: ChunkGrid, uniforms: CityUn
     return m;
   });
   const clutterMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.1 });
-  const heaters = heaterMatrices.map((list) => instances(heaterGeometry(), clutterMaterial, list, rand));
-  const acUnits = acMatrices.map((list) => instances(acGeometry(), clutterMaterial, list, rand));
+  const heaters = heaterMatrices.map((list) => instances(heaterGeometry(), clutterMaterial, list, rand, clutterKeep));
+  const acUnits = acMatrices.map((list) => instances(acGeometry(), clutterMaterial, list, rand, clutterKeep));
   return { chunks, heaters, acUnits, clutterMaterial, footprints };
 }
 
@@ -115,67 +118,82 @@ function longestEdgeAngle(r: Ring): number {
 }
 
 /** Outward-facing quads around a ring; u runs along each wall from its first corner. */
-function walls(w: GeometryWriter, ring: Ring, y0: number, y1: number, c: Rgb, seed: number, type: Facade, top: number): void {
+function walls(w: GeometryWriter, ring: Ring, y0: number, y1: number, tint: number, seed: number, type: Facade, top: number): void {
   for (let i = 0, n = ring.length; i < n; i += 2) {
     const j = (i + 2) % n;
     const ax = ring[i], az = ring[i + 1], bx = ring[j], bz = ring[j + 1];
     const len = Math.hypot(bx - ax, bz - az);
     const code = type + Math.min(len, 999) / 1000;
-    const a0 = w.vertex(ax, y0, az, c[0], c[1], c[2], 0, seed, top, code);
-    const a1 = w.vertex(ax, y1, az, c[0], c[1], c[2], 0, seed, top, code);
-    const b1 = w.vertex(bx, y1, bz, c[0], c[1], c[2], len, seed, top, code);
-    const b0 = w.vertex(bx, y0, bz, c[0], c[1], c[2], len, seed, top, code);
+    const a0 = w.vertex(ax, y0, az, tint, 0, seed, top, code);
+    const a1 = w.vertex(ax, y1, az, tint, 0, seed, top, code);
+    const b1 = w.vertex(bx, y1, bz, tint, len, seed, top, code);
+    const b0 = w.vertex(bx, y0, bz, tint, len, seed, top, code);
     w.quad(a0, a1, b1, b0);
   }
 }
-/** The parapet's inner face: a strip from the wall top down to an inset ring at roof level. */
-function bevel(w: GeometryWriter, outer: Ring, inner: Float32Array, roofY: number, c: Rgb, seed: number): void {
-  const code = FACADE.parapet;
-  for (let i = 0, n = outer.length; i < n; i += 2) {
-    const j = (i + 2) % n;
-    const oa = w.vertex(outer[i], roofY + PARAPET, outer[i + 1], c[0], c[1], c[2], 0, seed, roofY, code);
-    const ob = w.vertex(outer[j], roofY + PARAPET, outer[j + 1], c[0], c[1], c[2], 0, seed, roofY, code);
-    const ib = w.vertex(inner[j], roofY, inner[j + 1], c[0], c[1], c[2], 0, seed, roofY, code);
-    const ia = w.vertex(inner[i], roofY, inner[i + 1], c[0], c[1], c[2], 0, seed, roofY, code);
+/** The parapet's inner face: a strip from the wall top down to an inset ring at roof level. Corners share
+ *  vertices, since the parapet shading reads no per-wall coordinate and flat shading needs no normals. */
+function bevel(w: GeometryWriter, outer: Ring, inner: Float32Array, roofY: number, tint: number, seed: number): void {
+  const code = FACADE.parapet, base = w.vertexCount, n = outer.length / 2;
+  for (let k = 0; k < n; k++) {
+    w.vertex(outer[2 * k], roofY + PARAPET, outer[2 * k + 1], tint, 0, seed, roofY, code);
+    w.vertex(inner[2 * k], roofY, inner[2 * k + 1], tint, 0, seed, roofY, code);
+  }
+  for (let k = 0; k < n; k++) {
+    const oa = base + 2 * k, ia = oa + 1, ob = base + 2 * ((k + 1) % n), ib = ob + 1;
     w.triUp(oa, ob, ib);
     w.triUp(oa, ib, ia);
   }
 }
-function slab(w: GeometryWriter, rings: Ring[], y: number, c: Rgb, seed: number, type: Facade): void {
+/** Vertical sides of a box with shared corners; only for surfaces whose shading ignores the wall coordinate. */
+function boxSides(w: GeometryWriter, ring: Ring, y0: number, y1: number, tint: number, seed: number, type: Facade): void {
+  const base = w.vertexCount, n = ring.length / 2;
+  for (let k = 0; k < n; k++) {
+    w.vertex(ring[2 * k], y0, ring[2 * k + 1], tint, 0, seed, y1, type);
+    w.vertex(ring[2 * k], y1, ring[2 * k + 1], tint, 0, seed, y1, type);
+  }
+  for (let k = 0; k < n; k++) {
+    const a0 = base + 2 * k, b0 = base + 2 * ((k + 1) % n);
+    w.quad(a0, a0 + 1, b0 + 1, b0);
+  }
+}
+function slab(w: GeometryWriter, rings: Ring[], y: number, tint: number, seed: number, type: Facade): void {
   const base = w.vertexCount;
-  for (const r of rings) for (let i = 0; i < r.length; i += 2) w.vertex(r[i], y, r[i + 1], c[0], c[1], c[2], 0, seed, y, type);
+  for (const r of rings) for (let i = 0; i < r.length; i += 2) w.vertex(r[i], y, r[i + 1], tint, 0, seed, y, type);
   const tris = triangulate(rings);
   for (let i = 0; i < tris.length; i += 3) w.triUp(base + tris[i], base + tris[i + 1], base + tris[i + 2]);
 }
 /** Stair bulkhead on the roof; returned as a footprint so the bird can stand on it. */
-function roofBox(w: GeometryWriter, x: number, z: number, roofY: number, yaw: number, wall: Rgb, roof: Rgb, seed: number): Footprint {
+function roofBox(w: GeometryWriter, x: number, z: number, roofY: number, yaw: number, wall: number, roof: number, seed: number): Footprint {
   const cos = Math.cos(yaw), sin = Math.sin(yaw), hw = ROOF_BOX.w / 2, hd = ROOF_BOX.d / 2;
   const ring = new Float32Array(8);
   const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]; // positive-area order, kept by the rotation
   corners.forEach(([u, v], k) => { ring[2 * k] = x + u * cos - v * sin; ring[2 * k + 1] = z + u * sin + v * cos; });
   const top = roofY + ROOF_BOX.h;
-  walls(w, ring, roofY, top, wall, seed, FACADE.parapet, top);
+  boxSides(w, ring, roofY, top, wall, seed, FACADE.parapet);
   slab(w, [ring], top, roof, seed, FACADE.roof);
   return { rings: [ring], height: top, minHeight: roofY };
 }
 
-function instances(geometry: THREE.BufferGeometry, material: THREE.Material, list: number[], rand: () => number): THREE.InstancedMesh | null {
-  const n = list.length / 4;
-  if (n === 0) return null;
-  const order = Array.from({ length: n }, (_, i) => i);
-  for (let i = n - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; } // random order keeps a reduced count uniform
-  const mesh = new THREE.InstancedMesh(geometry, material, n);
+function instances(geometry: THREE.BufferGeometry, material: THREE.Material, list: number[], rand: () => number, keep: number): Clutter | null {
+  const full = list.length / 4;
+  if (full === 0) return null;
+  const order = Array.from({ length: full }, (_, i) => i);
+  for (let i = full - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; } // random order keeps a reduced count uniform
+  const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, Math.ceil(full * keep)));
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
-  order.forEach((src, dst) => {
+  for (let dst = 0; dst < mesh.count; dst++) {
+    const src = order[dst];
     p.set(list[4 * src], list[4 * src + 1], list[4 * src + 2]);
     q.setFromAxisAngle(up, list[4 * src + 3]);
     mesh.setMatrixAt(dst, m.compose(p, q, s));
-  });
+  }
   mesh.instanceMatrix.needsUpdate = true;
   mesh.receiveShadow = true;
   mesh.computeBoundingSphere();
   mesh.matrixAutoUpdate = false;
-  return mesh;
+  releaseAfterUpload(mesh.instanceMatrix);
+  return { mesh, full };
 }
 function colored(g: THREE.BufferGeometry, hex: string): THREE.BufferGeometry {
   const c = srgb(hex), n = g.attributes.position.count, arr = new Float32Array(n * 3);
@@ -199,9 +217,10 @@ function acGeometry(): THREE.BufferGeometry {
 }
 
 function facadeMaterial(uniforms: CityUniforms): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, flatShading: true });
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, flatShading: true });
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
+    withTint(shader);
     withWorldPos(shader, 'varying vec4 vFacade;\n' + CITY_UNIFORMS_GLSL + FACADE_GLSL);
     shader.vertexShader = after(shader.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aFacade;\nvarying vec4 vFacade;'), 'begin_vertex', 'vFacade = aFacade;');
     shader.fragmentShader = after(shader.fragmentShader, 'color_fragment', /* glsl */ `

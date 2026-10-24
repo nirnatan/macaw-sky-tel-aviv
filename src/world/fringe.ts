@@ -1,7 +1,7 @@
 // Procedural low-detail skyline outside the data box so the horizon is a city fading into fog, not an empty plain.
 import * as THREE from 'three';
 import type { CityData } from './data';
-import { DATA_HALF, hash01, pointInRing, rng } from './geom';
+import { DATA_HALF, hash01, pointInRing, releaseAfterUpload, rng } from './geom';
 import { srgb } from './shaders';
 
 const RADIUS = 9000;
@@ -10,7 +10,7 @@ const COAST_MAX_X = 1000; // the coast never reaches further east, so beyond it 
 
 export interface Fringe { mesh: THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>; setFraction(f: number): void }
 
-export function buildFringe(data: CityData): Fringe {
+export function buildFringe(data: CityData, keep: number): Fringe {
   const rand = rng(23);
   const palette = ['#e7dfd0', '#d9d2c4', '#cfc8bb', '#e2d6c2', '#c9c3b8', '#dcd3c3'].map(srgb);
   const matrices: THREE.Matrix4[] = [];
@@ -41,14 +41,15 @@ export function buildFringe(data: CityData): Fringe {
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
   const geometry = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
   geometry.deleteAttribute('uv');
-  const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 }), matrices.length);
-  order.forEach((src, dst) => { mesh.setMatrixAt(dst, matrices[src]); mesh.setColorAt(dst, colors[src]); });
+  const max = matrices.length;
+  const mesh = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 }), Math.ceil(max * keep));
+  for (let dst = 0; dst < mesh.count; dst++) { mesh.setMatrixAt(dst, matrices[order[dst]]); mesh.setColorAt(dst, colors[order[dst]]); }
   mesh.instanceMatrix.needsUpdate = true;
   mesh.receiveShadow = true;
   mesh.matrixAutoUpdate = false;
   mesh.frustumCulled = false;
-  const max = matrices.length;
-  return { mesh, setFraction(f) { mesh.count = Math.round(max * f); } };
+  releaseAfterUpload(mesh.instanceMatrix, mesh.instanceColor!);
+  return { mesh, setFraction(f) { mesh.count = Math.min(mesh.instanceMatrix.count, Math.round(max * f)); } };
 }
 
 function valueNoise(x: number, z: number): number {
