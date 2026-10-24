@@ -1,10 +1,10 @@
 import type { HudFrame, Input, TargetHud } from '../contracts';
 import type { CityData } from '../world/data';
 import { PLACES, placeById, type Place } from '../places';
-import { checkIcon, compassArrow, pauseIcon, placeIcon, ringIcon } from './art';
+import { centerIcon, checkIcon, compassArrow, pauseIcon, placeIcon, ringIcon } from './art';
 import { el } from './dom';
 import { createMinimap } from './minimap';
-import { UI_TEXT, formatDistance, hintHtml } from './strings';
+import { MAP_CREDIT, UI_TEXT, formatDistance, hintHtml } from './strings';
 
 const AHEAD_RADIANS = 0.22;
 
@@ -20,7 +20,7 @@ const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const setText = (node: HTMLElement, text: string) => { if (node.textContent !== text) node.textContent = text; };
 const setHtml = (node: HTMLElement, html: string) => { if (node.dataset.html !== html) { node.dataset.html = html; node.innerHTML = html; } };
 
-export function createHud(parent: HTMLElement, data: CityData, input: Input, onPauseClick: () => void) {
+export function createHud(parent: HTMLElement, data: CityData, input: Input, handlers: { onPause: () => void; onCenterTilt: () => void }) {
   const hud = el('div', 'mc-hud pending');
   hud.hidden = true;
   hud.innerHTML = `
@@ -33,18 +33,23 @@ export function createHud(parent: HTMLElement, data: CityData, input: Input, onP
       <div class="mc-compass-text"><span class="mc-he" lang="he" dir="rtl"></span><span class="mc-en" lang="en" dir="ltr"></span></div>
     </div>
     <button class="mc-pause-btn mc-glass" aria-label="${UI_TEXT.pauseButton.en}" tabindex="-1">${pauseIcon}</button>
+    <button class="mc-center-btn mc-glass" aria-label="${UI_TEXT.tiltCenter.en}" tabindex="-1" hidden>${centerIcon}<span class="mc-he" dir="rtl">${UI_TEXT.tiltCenter.he}</span></button>
     <div class="mc-readouts">
-      <div class="mc-readout mc-glass"><small class="mc-he" dir="rtl">${UI_TEXT.altitude.he}</small><span class="mc-alt">0</span><small>m</small></div>
+      <div class="mc-readout mc-readout-alt mc-glass"><small class="mc-he" dir="rtl">${UI_TEXT.altitude.he}</small><span class="mc-alt">0</span><small>m</small></div>
       <div class="mc-readout mc-glass"><small class="mc-he" dir="rtl">${UI_TEXT.speed.he}</small><span class="mc-spd">0</span><small>km/h</small></div>
     </div>
     <div class="mc-minimap-wrap"></div>
-    <div class="mc-hint mc-glass off"><div class="mc-he" dir="rtl"></div><div class="mc-en" dir="ltr"></div></div>`;
+    <div class="mc-hint mc-glass off"><div class="mc-he" dir="rtl"></div><div class="mc-en" dir="ltr"></div></div>
+    <div class="mc-credit mc-hud-credit" dir="ltr">${MAP_CREDIT}</div>`;
   parent.append(hud);
 
+  const pop = (node: HTMLElement) => { node.classList.remove('pop'); void node.offsetWidth; node.classList.add('pop'); };
   const minimap = createMinimap(data);
   hud.querySelector('.mc-minimap-wrap')!.append(minimap.element);
   const pauseButton = hud.querySelector<HTMLButtonElement>('.mc-pause-btn')!;
-  pauseButton.addEventListener('click', () => { pauseButton.blur(); onPauseClick(); });
+  pauseButton.addEventListener('click', () => { pauseButton.blur(); handlers.onPause(); });
+  const centerButton = hud.querySelector<HTMLButtonElement>('.mc-center-btn')!;
+  centerButton.addEventListener('click', () => { centerButton.blur(); pop(centerButton); handlers.onCenterTilt(); });
 
   const badges = Object.fromEntries(PLACES.map(({ id }) => [id, hud.querySelector<HTMLElement>(`[data-target="${id}"]`)!]));
   const dial = hud.querySelector<HTMLElement>('.mc-dial')!;
@@ -60,7 +65,6 @@ export function createHud(parent: HTMLElement, data: CityData, input: Input, onP
   const hintHe = hint.querySelector<HTMLElement>('.mc-he')!;
   const hintEn = hint.querySelector<HTMLElement>('.mc-en')!;
   let lastRings = 0;
-  const pop = (node: HTMLElement) => { node.classList.remove('pop'); void node.offsetWidth; node.classList.add('pop'); };
 
   const updateCompass = (targets: TargetHud[]) => {
     const nearest = targets.filter((t) => !t.found).sort((a, b) => a.distance - b.distance)[0];
@@ -79,6 +83,7 @@ export function createHud(parent: HTMLElement, data: CityData, input: Input, onP
 
   return {
     element: hud,
+    setTiltActive(on: boolean) { centerButton.hidden = !on; },
     show(visible: boolean) {
       hud.hidden = !visible;
       if (visible) requestAnimationFrame(() => hud.classList.remove('pending'));

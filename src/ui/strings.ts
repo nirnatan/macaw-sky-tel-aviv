@@ -16,6 +16,11 @@ export const SPECIES: Record<Species, Bilingual> = {
   blueGold: { he: 'ארה כחול-צהוב', en: 'Blue & Gold Macaw' },
   scarlet: { he: 'ארה אדום', en: 'Scarlet Macaw' },
 };
+/** For the compact cards on phones, where the "Pick your macaw" heading already says macaw. */
+export const SPECIES_SHORT: Record<Species, Bilingual> = {
+  blueGold: { he: 'כחול-צהוב', en: 'Blue & Gold' },
+  scarlet: { he: 'אדום', en: 'Scarlet' },
+};
 
 export const UI_TEXT = {
   whoFlies: { he: 'מי עף היום?', en: "Who's flying?" },
@@ -34,7 +39,20 @@ export const UI_TEXT = {
   altitude: { he: 'גובה', en: 'Altitude' },
   speed: { he: 'מהירות', en: 'Speed' },
   north: { he: 'צ', en: 'N' },
+  tilt: { he: 'הטה לנווט', en: 'Tilt to steer' },
+  tiltOn: { he: 'הטה את הטלפון כדי לנווט!', en: 'Tilt the phone to steer!' },
+  tiltDenied: { he: 'לא קיבלנו אישור לתנועה. עפים עם הג׳ויסטיק!', en: 'No motion access. The joystick works great!' },
+  tiltCentered: { he: 'מכוון! ככה עפים ישר', en: 'Centered! Hold it like this to fly straight' },
+  tiltCenter: { he: 'מרכז', en: 'Center' },
+  rotate: { he: 'סובב את הטלפון לרוחב', en: 'Turn your phone sideways' },
+  rotateWhy: { he: 'ככה רואים הכי טוב!', en: 'for the best view' },
+  installTitle: { he: 'משחק במסך מלא', en: 'Play full screen' },
+  installShare: { he: 'לחצו על שיתוף', en: 'Tap Share' },
+  installAdd: { he: 'ואז ״הוספה למסך הבית״', en: 'then “Add to Home Screen”' },
+  gotIt: { he: 'הבנתי', en: 'Got it' },
 } satisfies Record<string, Bilingual>;
+
+export const MAP_CREDIT = 'Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
 
 export const QUALITY_LABELS: Record<'auto' | 'low' | 'medium' | 'high', Bilingual> = {
   auto: { he: 'אוטומטי', en: 'Auto' },
@@ -70,8 +88,8 @@ export const METERS: Bilingual = { he: 'מ׳', en: 'm' };
 export const KILOMETERS: Bilingual = { he: 'ק״מ', en: 'km' };
 
 export function formatDistance(meters: number, lang: keyof Bilingual): string {
-  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} ${KILOMETERS[lang]}`;
-  return `${Math.round(meters / 10) * 10} ${METERS[lang]}`;
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)}\u00a0${KILOMETERS[lang]}`; // a wrapped compass line keeps the number with its unit
+  return `${Math.round(meters / 10) * 10}\u00a0${METERS[lang]}`;
 }
 
 const WELCOME_HOME: Bilingual = { he: 'ברוך הבא הביתה!', en: 'Welcome home!' };
